@@ -4,6 +4,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,117 +18,99 @@ const TABS = [
 
 export default function BottomBar({ state, navigation }) {
   const insets = useSafeAreaInsets();
+  const bottomPadding = Math.max(insets.bottom, Platform.OS === 'ios' ? 14 : 8);
 
   return (
-    <View style={[styles.wrapper, { paddingBottom: insets.bottom || 16 }]}>
-      <View style={styles.container}>
-        {state.routes.map((route, index) => {
-          const isFocused = state.index === index;
-          const tab = TABS[index];
+    <View style={[styles.barContainer, { paddingBottom: bottomPadding }]}>
+      {state.routes.map((route, index) => {
+        const isFocused = state.index === index;
+        const tab = TABS[index] || {
+          name: route.name,
+          icon: 'grid',
+          iconOutline: 'grid-outline',
+          label: route.name,
+        };
 
-          const onPress = () => {
-            const event = navigation.emit({
-              type: 'tabPress',
-              target: route.key,
-              canPreventDefault: true,
-            });
-            if (!isFocused && !event.defaultPrevented) {
-              navigation.navigate(route.name);
-            }
-          };
+        const onPress = () => {
+          const event = navigation.emit({
+            type: 'tabPress',
+            target: route.key,
+            canPreventDefault: true,
+          });
+          if (!isFocused && !event.defaultPrevented) {
+            navigation.navigate(route.name);
+          }
+        };
 
-          return (
-            <TouchableOpacity
-              key={route.key}
-              onPress={onPress}
-              style={styles.tab}
-              activeOpacity={0.8}
+        return (
+          <TouchableOpacity
+            key={route.key}
+            onPress={onPress}
+            style={styles.tabItem}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.iconBox, isFocused && styles.activeIconBox]}>
+              <Ionicons
+                name={isFocused ? tab.icon : tab.iconOutline}
+                size={22}
+                color={isFocused ? '#E64A78' : '#8C7A82'}
+              />
+            </View>
+            <Text
+              style={[styles.tabLabel, isFocused && styles.activeTabLabel]}
+              numberOfLines={1}
             >
-              {isFocused ? (
-                <View style={styles.activePill}>
-                  <View style={styles.activeIconBox}>
-                    <Ionicons name={tab.icon} size={18} color="#FFFFFF" />
-                  </View>
-                  <Text style={styles.activeLabel}>{tab.label}</Text>
-                </View>
-              ) : (
-                <View style={styles.inactiveBox}>
-                  <Ionicons name={tab.iconOutline} size={22} color="#C4B0B8" />
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrapper: {
+  barContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    backgroundColor: 'transparent',
-  },
-  container: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    borderRadius: 28,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    // Border instead of heavy shadow for light feel
-    borderWidth: 1,
-    borderColor: '#F0EAED',
+    borderTopWidth: 1,
+    borderTopColor: '#F0EAED',
+    paddingTop: 8,
     shadowColor: '#2A1E24',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
     elevation: 10,
   },
-  tab: {
+  tabItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 2,
   },
-  activePill: {
-    flexDirection: 'row',
+  iconBox: {
+    width: 44,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
-    backgroundColor: '#E64A78',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingLeft: 10,
-    paddingRight: 14,
-    gap: 6,
-    shadowColor: '#E64A78',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
+    justifyContent: 'center',
+    marginBottom: 3,
   },
   activeIconBox: {
-    width: 26,
-    height: 26,
-    borderRadius: 9,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: '#FDEFF3',
   },
-  activeLabel: {
-    fontFamily: 'Poppins_600SemiBold',
-    fontSize: 13,
-    color: '#FFFFFF',
-    letterSpacing: 0.2,
+  tabLabel: {
+    fontSize: 11.5,
+    fontWeight: '500',
+    color: '#8C7A82',
+    textAlign: 'center',
   },
-  inactiveBox: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 14,
+  activeTabLabel: {
+    color: '#E64A78',
+    fontWeight: '700',
   },
 });

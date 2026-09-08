@@ -1,474 +1,647 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import {
-    View,
-    Text,
-    ScrollView,
-    StyleSheet,
-    TouchableOpacity,
-    Alert,
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  Image,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Header from '../components/Header';
+import ProfileIncompleteModal from '../components/ProfileIncompleteModal';
 import { useCart } from '../contexts/CartContext';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function CartScreen({ navigation }) {
-    const { cartItems, updateQuantity, removeFromCart, clearCart, getCartTotal, getCartCount } = useCart();
+  const {
+    cartItems,
+    loading,
+    fetchCart,
+    updateQuantity,
+    removeFromCart,
+    clearCart,
+    getCartTotal,
+    getCartCount,
+  } = useCart();
+  const { user } = useAuth();
 
-    const handleCheckout = () => {
-        if (cartItems.length === 0) {
-            Alert.alert('Cart Empty', 'Please add items to your cart first.');
-            return;
-        }
-        Alert.alert(
-            'Checkout',
-            `Proceed to checkout with ${getCartCount()} items?`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Proceed',
-                    onPress: () => {
-                        Alert.alert('Success', 'Order placed successfully!');
-                        clearCart();
-                        navigation.navigate('Home');
-                    },
-                },
-            ]
-        );
-    };
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatingId, setUpdatingId] = useState(null);
 
-    const handleRemoveItem = (item) => {
-        Alert.alert(
-            'Remove Item',
-            `Remove ${item.name} from cart?`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Remove', style: 'destructive', onPress: () => removeFromCart(item.id) },
-            ]
-        );
-    };
+  // Profile Incomplete Modal State
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [profileCompletionPct, setProfileCompletionPct] = useState(0);
+  const [missingFields, setMissingFields] = useState([]);
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchCart();
+    setRefreshing(false);
+  }, [fetchCart]);
+
+  const handleCheckout = () => {
     if (cartItems.length === 0) {
-        return (
-            <SafeAreaView style={styles.safe} edges={['top']}>
-                <Header title="Shopping Cart" showBack={true} />
-                <View style={styles.emptyContainer}>
-                    <View style={styles.emptyIconBox}>
-                        <Ionicons name="bag-outline" size={80} color="#E0D4D8" />
-                    </View>
-                    <Text style={styles.emptyTitle}>Your cart is empty</Text>
-                    <Text style={styles.emptyText}>Add some products to get started!</Text>
-                    <TouchableOpacity
-                        style={styles.shopNowBtn}
-                        onPress={() => navigation.navigate('Shop')}
-                    >
-                        <Ionicons name="storefront-outline" size={18} color="#FFFFFF" />
-                        <Text style={styles.shopNowText}>Start Shopping</Text>
-                    </TouchableOpacity>
-                </View>
-            </SafeAreaView>
-        );
+      Alert.alert('Cart Empty', 'Please add items to your cart first.');
+      return;
     }
 
-    return (
-        <SafeAreaView style={styles.safe} edges={['top']}>
-            <Header title="Shopping Cart" showBack={true} />
+    // Check profile completion (100% required)
+    const isProfileComplete =
+      user?.is_profile_completed === true ||
+      Number(user?.profile_completion_percentage) === 100;
 
-            <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.container}
-            >
-                {/* Cart Items */}
-                {cartItems.map((item, index) => (
-                    <View key={`${item.id}-${index}`} style={styles.cartItem}>
-                        <View style={[styles.itemImage, { backgroundColor: item.color + '15' }]}>
-                            <Ionicons name={item.icon} size={36} color={item.color} />
-                        </View>
+    if (
+      user &&
+      !isProfileComplete &&
+      user.profile_completion_percentage !== undefined &&
+      Number(user.profile_completion_percentage) < 100
+    ) {
+      setProfileCompletionPct(Number(user.profile_completion_percentage) || 0);
+      setMissingFields(user.missing_fields || []);
+      setProfileModalVisible(true);
+      return;
+    }
 
-                        <View style={styles.itemInfo}>
-                            <Text style={styles.itemName} numberOfLines={1}>
-                                {item.name}
-                            </Text>
-                            <Text style={styles.itemCategory}>{item.category}</Text>
-                            <Text style={styles.itemPrice}>{item.price}</Text>
-                        </View>
-
-                        <View style={styles.itemActions}>
-                            <TouchableOpacity
-                                style={styles.removeBtn}
-                                onPress={() => handleRemoveItem(item)}
-                            >
-                                <Ionicons name="trash-outline" size={16} color="#E64A78" />
-                            </TouchableOpacity>
-
-                            <View style={styles.quantityControl}>
-                                <TouchableOpacity
-                                    style={styles.qtyBtn}
-                                    onPress={() => updateQuantity(item.id, item.quantity - 1)}
-                                >
-                                    <Ionicons name="remove" size={14} color="#2A1E24" />
-                                </TouchableOpacity>
-                                <Text style={styles.qtyText}>{item.quantity}</Text>
-                                <TouchableOpacity
-                                    style={styles.qtyBtn}
-                                    onPress={() => updateQuantity(item.id, item.quantity + 1)}
-                                >
-                                    <Ionicons name="add" size={14} color="#2A1E24" />
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                    </View>
-                ))}
-
-                {/* Coupon Section */}
-                <View style={styles.couponCard}>
-                    <View style={styles.couponIcon}>
-                        <Ionicons name="pricetag" size={18} color="#C89738" />
-                    </View>
-                    <Text style={styles.couponText}>Apply Coupon Code</Text>
-                    <TouchableOpacity style={styles.applyBtn}>
-                        <Text style={styles.applyBtnText}>Apply</Text>
-                    </TouchableOpacity>
-                </View>
-
-                {/* Price Summary */}
-                <View style={styles.summaryCard}>
-                    <Text style={styles.summaryTitle}>Price Summary</Text>
-
-                    <View style={styles.summaryRow}>
-                        <Text style={styles.summaryLabel}>Subtotal ({getCartCount()} items)</Text>
-                        <Text style={styles.summaryValue}>₹{getCartTotal().toLocaleString()}</Text>
-                    </View>
-
-                    <View style={styles.summaryRow}>
-                        <Text style={styles.summaryLabel}>Discount</Text>
-                        <Text style={[styles.summaryValue, { color: '#27A462' }]}>
-                            - ₹{Math.round(getCartTotal() * 0.1).toLocaleString()}
-                        </Text>
-                    </View>
-
-                    <View style={styles.summaryRow}>
-                        <Text style={styles.summaryLabel}>Delivery Charges</Text>
-                        <Text style={[styles.summaryValue, { color: '#27A462' }]}>FREE</Text>
-                    </View>
-
-                    <View style={styles.summaryDivider} />
-
-                    <View style={styles.summaryRow}>
-                        <Text style={styles.totalLabel}>Total Amount</Text>
-                        <Text style={styles.totalValue}>
-                            ₹{Math.round(getCartTotal() * 0.9).toLocaleString()}
-                        </Text>
-                    </View>
-
-                    <View style={styles.savingsBadge}>
-                        <Ionicons name="checkmark-circle" size={14} color="#27A462" />
-                        <Text style={styles.savingsText}>
-                            You will save ₹{Math.round(getCartTotal() * 0.1).toLocaleString()} on this order
-                        </Text>
-                    </View>
-                </View>
-            </ScrollView>
-
-            {/* Bottom Checkout Bar */}
-            <View style={styles.checkoutBar}>
-                <View style={styles.checkoutLeft}>
-                    <Text style={styles.checkoutLabel}>Total</Text>
-                    <Text style={styles.checkoutPrice}>
-                        ₹{Math.round(getCartTotal() * 0.9).toLocaleString()}
-                    </Text>
-                </View>
-                <TouchableOpacity style={styles.checkoutBtn} onPress={handleCheckout}>
-                    <Text style={styles.checkoutBtnText}>Proceed to Checkout</Text>
-                    <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
-                </TouchableOpacity>
-            </View>
-        </SafeAreaView>
+    Alert.alert(
+      'Checkout',
+      `Proceed to checkout with ${getCartCount()} items (Total: ₹${getCartTotal().toLocaleString('en-IN')})?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Proceed',
+          onPress: async () => {
+            await clearCart();
+            Alert.alert('Order Placed', 'Your order has been placed successfully!');
+            navigation.navigate('Home');
+          },
+        },
+      ]
     );
+  };
+
+  const handleUpdateQty = async (productId, newQty) => {
+    setUpdatingId(productId);
+    try {
+      const res = await updateQuantity(productId, newQty);
+      if (!res.success && res.message) {
+        Alert.alert('Notice', res.message);
+      }
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleRemoveItem = (item) => {
+    const prodId = item.product_id || item.id;
+    Alert.alert(
+      'Remove Item',
+      `Remove ${item.name || item.product_name} from your cart?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setUpdatingId(prodId);
+            try {
+              await removeFromCart(prodId);
+            } finally {
+              setUpdatingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  if (loading && cartItems.length === 0) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <Header title="Shopping Cart" showBack={true} />
+        <View style={styles.loaderCenter}>
+          <ActivityIndicator size="large" color="#E64A78" />
+          <Text style={styles.loaderText}>Loading your cart...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (cartItems.length === 0) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <Header title="Shopping Cart" showBack={true} />
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyIconBox}>
+            <Ionicons name="bag-outline" size={70} color="#E64A78" />
+          </View>
+          <Text style={styles.emptyTitle}>Your cart is empty</Text>
+          <Text style={styles.emptyText}>Add some products to get started!</Text>
+          <TouchableOpacity
+            style={styles.shopNowBtn}
+            onPress={() => navigation.navigate('Main', { screen: 'Shop' })}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="storefront-outline" size={18} color="#FFFFFF" />
+            <Text style={styles.shopNowText}>Start Shopping</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const subtotal = getCartTotal();
+  const finalTotal = subtotal;
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <Header title="Shopping Cart" showBack={true} />
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#E64A78']}
+            tintColor="#E64A78"
+          />
+        }
+      >
+        {/* Profile Warning Banner if < 100% */}
+        {user &&
+          user.profile_completion_percentage !== undefined &&
+          Number(user.profile_completion_percentage) < 100 && (
+            <TouchableOpacity
+              style={styles.profileWarningCard}
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('Profile')}
+            >
+              <View style={styles.warningIconCircle}>
+                <Ionicons name="shield-alert" size={20} color="#DC2626" />
+              </View>
+              <View style={styles.warningTextCol}>
+                <Text style={styles.warningTitle}>
+                  Profile {user.profile_completion_percentage || 0}% Complete
+                </Text>
+                <Text style={styles.warningDesc}>
+                  100% profile is required to checkout. Tap to complete.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#DC2626" />
+            </TouchableOpacity>
+          )}
+
+        {/* Cart Items */}
+        {cartItems.map((item, index) => {
+          const prodId = item.product_id || item.id;
+          const isItemUpdating = updatingId === prodId;
+          const formattedPrice =
+            typeof item.price === 'number'
+              ? `₹${item.price.toLocaleString('en-IN')}`
+              : String(item.price).startsWith('₹')
+              ? item.price
+              : `₹${item.price}`;
+
+          return (
+            <View key={`${prodId}-${index}`} style={styles.cartItem}>
+              {/* Product Thumbnail */}
+              <View style={styles.itemImage}>
+                {item.image ? (
+                  <Image
+                    source={{ uri: item.image }}
+                    style={styles.thumbImg}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.fallbackIcon}>
+                    <Ionicons name="bag" size={28} color="#E64A78" />
+                  </View>
+                )}
+              </View>
+
+              {/* Product Info */}
+              <View style={styles.itemInfo}>
+                <Text style={styles.itemName} numberOfLines={1}>
+                  {item.name || item.product_name}
+                </Text>
+                <Text style={styles.itemPrice}>{formattedPrice}</Text>
+                {item.product_stock !== undefined && (
+                  <Text style={styles.stockHint}>
+                    {item.product_stock > 0 ? `${item.product_stock} in stock` : 'Out of stock'}
+                  </Text>
+                )}
+              </View>
+
+              {/* Actions: Delete & Quantity */}
+              <View style={styles.itemActions}>
+                <TouchableOpacity
+                  style={styles.removeBtn}
+                  onPress={() => handleRemoveItem(item)}
+                  activeOpacity={0.7}
+                  disabled={isItemUpdating}
+                >
+                  <Ionicons name="trash-outline" size={16} color="#E64A78" />
+                </TouchableOpacity>
+
+                <View style={styles.quantityControl}>
+                  <TouchableOpacity
+                    style={styles.qtyBtn}
+                    onPress={() => handleUpdateQty(prodId, item.quantity - 1)}
+                    activeOpacity={0.7}
+                    disabled={isItemUpdating}
+                  >
+                    <Ionicons name="remove" size={14} color="#2A1E24" />
+                  </TouchableOpacity>
+
+                  <Text style={styles.qtyText}>
+                    {isItemUpdating ? '...' : item.quantity}
+                  </Text>
+
+                  <TouchableOpacity
+                    style={styles.qtyBtn}
+                    onPress={() => handleUpdateQty(prodId, item.quantity + 1)}
+                    activeOpacity={0.7}
+                    disabled={isItemUpdating}
+                  >
+                    <Ionicons name="add" size={14} color="#2A1E24" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          );
+        })}
+
+        {/* Price Summary */}
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryTitle}>Price Summary</Text>
+
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Subtotal ({getCartCount()} items)</Text>
+            <Text style={styles.summaryValue}>₹{subtotal.toLocaleString('en-IN')}</Text>
+          </View>
+
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Delivery Charges</Text>
+            <Text style={[styles.summaryValue, { color: '#27A462' }]}>FREE</Text>
+          </View>
+
+          <View style={styles.summaryDivider} />
+
+          <View style={styles.summaryRow}>
+            <Text style={styles.totalLabel}>Total Amount</Text>
+            <Text style={styles.totalValue}>₹{finalTotal.toLocaleString('en-IN')}</Text>
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Bottom Checkout Bar */}
+      <View style={styles.checkoutBar}>
+        <View style={styles.checkoutLeft}>
+          <Text style={styles.checkoutLabel}>Total</Text>
+          <Text style={styles.checkoutPrice}>₹{finalTotal.toLocaleString('en-IN')}</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.checkoutBtn}
+          onPress={handleCheckout}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.checkoutBtnText}>Proceed to Checkout</Text>
+          <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Profile Incomplete Modal Alert */}
+      <ProfileIncompleteModal
+        visible={profileModalVisible}
+        percentage={profileCompletionPct}
+        missingFields={missingFields}
+        onClose={() => setProfileModalVisible(false)}
+        onComplete={() => {
+          setProfileModalVisible(false);
+          navigation.navigate('Profile');
+        }}
+      />
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
-    safe: {
-        flex: 1,
-        backgroundColor: '#FAF7F8',
-    },
-    container: {
-        paddingHorizontal: 20,
-        paddingTop: 14,
-        paddingBottom: 120,
-    },
-    emptyContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: 40,
-    },
-    emptyIconBox: {
-        width: 160,
-        height: 160,
-        borderRadius: 80,
-        backgroundColor: '#FAF7F8',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: 24,
-        borderWidth: 2,
-        borderColor: '#F0EAED',
-        borderStyle: 'dashed',
-    },
-    emptyTitle: {
-        fontFamily: 'Poppins_700Bold',
-        fontSize: 22,
-        color: '#2A1E24',
-        marginBottom: 8,
-    },
-    emptyText: {
-        fontFamily: 'Poppins_400Regular',
-        fontSize: 14,
-        color: '#9E8E93',
-        textAlign: 'center',
-        marginBottom: 32,
-    },
-    shopNowBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        backgroundColor: '#E64A78',
-        paddingHorizontal: 24,
-        paddingVertical: 14,
-        borderRadius: 16,
-        shadowColor: '#E64A78',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 6,
-    },
-    shopNowText: {
-        fontFamily: 'Poppins_600SemiBold',
-        fontSize: 14,
-        color: '#FFFFFF',
-    },
-    cartItem: {
-        flexDirection: 'row',
-        backgroundColor: '#FFFFFF',
-        borderRadius: 18,
-        padding: 14,
-        marginBottom: 12,
-        shadowColor: '#2A1E24',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.04,
-        shadowRadius: 6,
-        elevation: 2,
-    },
-    itemImage: {
-        width: 70,
-        height: 70,
-        borderRadius: 16,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: 14,
-    },
-    itemInfo: {
-        flex: 1,
-    },
-    itemName: {
-        fontFamily: 'Poppins_600SemiBold',
-        fontSize: 14,
-        color: '#2A1E24',
-        marginBottom: 4,
-    },
-    itemCategory: {
-        fontFamily: 'Poppins_400Regular',
-        fontSize: 11,
-        color: '#9E8E93',
-        marginBottom: 6,
-    },
-    itemPrice: {
-        fontFamily: 'Poppins_700Bold',
-        fontSize: 15,
-        color: '#E64A78',
-    },
-    itemActions: {
-        alignItems: 'flex-end',
-        justifyContent: 'space-between',
-    },
-    removeBtn: {
-        width: 32,
-        height: 32,
-        borderRadius: 10,
-        backgroundColor: '#FFF0F4',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    quantityControl: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-        backgroundColor: '#FAF7F8',
-        borderRadius: 12,
-        paddingHorizontal: 6,
-        paddingVertical: 4,
-    },
-    qtyBtn: {
-        width: 24,
-        height: 24,
-        borderRadius: 8,
-        backgroundColor: '#FFFFFF',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    qtyText: {
-        fontFamily: 'Poppins_600SemiBold',
-        fontSize: 13,
-        color: '#2A1E24',
-        minWidth: 20,
-        textAlign: 'center',
-    },
-    couponCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#FBF5E6',
-        borderRadius: 16,
-        padding: 16,
-        marginBottom: 16,
-        borderWidth: 1,
-        borderColor: 'rgba(200,151,56,0.2)',
-        borderStyle: 'dashed',
-    },
-    couponIcon: {
-        width: 36,
-        height: 36,
-        borderRadius: 12,
-        backgroundColor: 'rgba(200,151,56,0.15)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: 12,
-    },
-    couponText: {
-        flex: 1,
-        fontFamily: 'Poppins_500Medium',
-        fontSize: 13,
-        color: '#2A1E24',
-    },
-    applyBtn: {
-        backgroundColor: '#C89738',
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 12,
-    },
-    applyBtnText: {
-        fontFamily: 'Poppins_600SemiBold',
-        fontSize: 12,
-        color: '#FFFFFF',
-    },
-    summaryCard: {
-        backgroundColor: '#FFFFFF',
-        borderRadius: 20,
-        padding: 20,
-        shadowColor: '#2A1E24',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.04,
-        shadowRadius: 8,
-        elevation: 3,
-    },
-    summaryTitle: {
-        fontFamily: 'Poppins_600SemiBold',
-        fontSize: 16,
-        color: '#2A1E24',
-        marginBottom: 16,
-    },
-    summaryRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 12,
-    },
-    summaryLabel: {
-        fontFamily: 'Poppins_400Regular',
-        fontSize: 13,
-        color: '#9E8E93',
-    },
-    summaryValue: {
-        fontFamily: 'Poppins_600SemiBold',
-        fontSize: 13,
-        color: '#2A1E24',
-    },
-    summaryDivider: {
-        height: 1,
-        backgroundColor: '#F0EAED',
-        marginVertical: 12,
-    },
-    totalLabel: {
-        fontFamily: 'Poppins_700Bold',
-        fontSize: 15,
-        color: '#2A1E24',
-    },
-    totalValue: {
-        fontFamily: 'Poppins_700Bold',
-        fontSize: 18,
-        color: '#E64A78',
-    },
-    savingsBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        backgroundColor: '#E8FBF5',
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        borderRadius: 12,
-        marginTop: 12,
-    },
-    savingsText: {
-        flex: 1,
-        fontFamily: 'Poppins_500Medium',
-        fontSize: 12,
-        color: '#27A462',
-    },
-    checkoutBar: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        backgroundColor: '#FFFFFF',
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: 20,
-        borderTopWidth: 1,
-        borderTopColor: '#F0EAED',
-        shadowColor: '#2A1E24',
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.06,
-        shadowRadius: 12,
-        elevation: 10,
-    },
-    checkoutLeft: {},
-    checkoutLabel: {
-        fontFamily: 'Poppins_400Regular',
-        fontSize: 12,
-        color: '#9E8E93',
-        marginBottom: 2,
-    },
-    checkoutPrice: {
-        fontFamily: 'Poppins_700Bold',
-        fontSize: 20,
-        color: '#2A1E24',
-    },
-    checkoutBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        backgroundColor: '#E64A78',
-        paddingHorizontal: 20,
-        paddingVertical: 14,
-        borderRadius: 16,
-        shadowColor: '#E64A78',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 6,
-    },
-    checkoutBtnText: {
-        fontFamily: 'Poppins_600SemiBold',
-        fontSize: 13,
-        color: '#FFFFFF',
-    },
+  safe: {
+    flex: 1,
+    backgroundColor: '#FAF7F8',
+  },
+  profileWarningCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1.5,
+    borderColor: '#FCA5A5',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+    gap: 12,
+  },
+  warningIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  warningTextCol: {
+    flex: 1,
+  },
+  warningTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#DC2626',
+    marginBottom: 2,
+  },
+  warningDesc: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#991B1B',
+  },
+  container: {
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 120,
+  },
+  loaderCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  loaderText: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 14,
+    color: '#9E8E93',
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+  },
+  emptyIconBox: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: '#FFF0F4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: 'rgba(230,74,120,0.2)',
+    borderStyle: 'dashed',
+  },
+  emptyTitle: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 20,
+    color: '#2A1E24',
+    marginBottom: 6,
+  },
+  emptyText: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13.5,
+    color: '#9E8E93',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  shopNowBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#E64A78',
+    paddingHorizontal: 24,
+    paddingVertical: 13,
+    borderRadius: 16,
+    shadowColor: '#E64A78',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  shopNowText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 14,
+    color: '#FFFFFF',
+  },
+  cartItem: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 12,
+    shadowColor: '#2A1E24',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#F0EAED',
+    alignItems: 'center',
+  },
+  itemImage: {
+    width: 68,
+    height: 68,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#FAF7F8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  thumbImg: {
+    width: '100%',
+    height: '100%',
+  },
+  fallbackIcon: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF0F4',
+  },
+  itemInfo: {
+    flex: 1,
+  },
+  itemName: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 14,
+    color: '#2A1E24',
+    marginBottom: 4,
+  },
+  itemPrice: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 15,
+    color: '#E64A78',
+    marginBottom: 2,
+  },
+  stockHint: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 11,
+    color: '#27A462',
+  },
+  itemActions: {
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    height: 64,
+  },
+  removeBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: '#FFF0F4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quantityControl: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FAF7F8',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: '#F0EAED',
+  },
+  qtyBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qtyText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 13,
+    color: '#2A1E24',
+    minWidth: 18,
+    textAlign: 'center',
+  },
+  summaryCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#2A1E24',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#F0EAED',
+    marginTop: 10,
+  },
+  summaryTitle: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 16,
+    color: '#2A1E24',
+    marginBottom: 16,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  summaryLabel: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    color: '#9E8E93',
+  },
+  summaryValue: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 13,
+    color: '#2A1E24',
+  },
+  summaryDivider: {
+    height: 1,
+    backgroundColor: '#F0EAED',
+    marginVertical: 12,
+  },
+  totalLabel: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 15,
+    color: '#2A1E24',
+  },
+  totalValue: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 18,
+    color: '#E64A78',
+  },
+  savingsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#E8FBF5',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginTop: 12,
+  },
+  savingsText: {
+    flex: 1,
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 12,
+    color: '#27A462',
+  },
+  checkoutBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F0EAED',
+    shadowColor: '#2A1E24',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  checkoutLeft: {},
+  checkoutLabel: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 12,
+    color: '#9E8E93',
+  },
+  checkoutPrice: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 20,
+    color: '#2A1E24',
+  },
+  checkoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#E64A78',
+    paddingHorizontal: 20,
+    paddingVertical: 13,
+    borderRadius: 16,
+    shadowColor: '#E64A78',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  checkoutBtnText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 13.5,
+    color: '#FFFFFF',
+  },
 });

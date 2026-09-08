@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,14 @@ import {
   StyleSheet,
   TouchableOpacity,
   Dimensions,
+  RefreshControl,
+  ActivityIndicator,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../contexts/AuthContext';
+import homeService from '../services/homeService';
 
 const { width } = Dimensions.get('window');
 
@@ -19,108 +24,158 @@ const QUICK_ACTIONS = [
   { icon: 'help-circle', label: 'Support',   bg: '#EEF5FF', color: '#4A7CE6' },
 ];
 
-const ACTIVITY = [
-  {
-    icon: 'arrow-down',
-    title: 'Commission Received',
-    date: 'Today, 10:30 AM',
-    amount: '+ ₹840',
-    positive: true,
-    bg: '#FFF0F4',
-    iconColor: '#E64A78',
-  },
-  {
-    icon: 'arrow-up',
-    title: 'Withdrawal',
-    date: 'Yesterday, 3:00 PM',
-    amount: '- ₹2,000',
-    positive: false,
-    bg: '#FBF5E6',
-    iconColor: '#C89738',
-  },
-  {
-    icon: 'flash',
-    title: 'Bonus Activated',
-    date: '2 days ago',
-    amount: '+ ₹1,200',
-    positive: true,
-    bg: '#F5F0FB',
-    iconColor: '#7B61C4',
-  },
-];
+export default function HomeScreen({ navigation }) {
+  const { user } = useAuth();
+  const [dashboardData, setDashboardData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-export default function HomeScreen() {
+  const fetchDashboard = useCallback(async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    try {
+      const result = await homeService.getDashboard();
+      if (result.success && result.data) {
+        setDashboardData(result.data);
+      }
+    } catch (err) {
+      console.error('Fetch dashboard error:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDashboard();
+  }, [fetchDashboard]);
+
+  const handleShareReferral = async () => {
+    const referral = dashboardData?.referral;
+    const refCode = referral?.referral_code || user?.referral_code;
+    if (!refCode) return;
+
+    try {
+      await Share.share({
+        message:
+          referral?.share_message ||
+          `Join Divy Shakti and start your wellness & earning journey! Use my referral code: ${refCode}`,
+      });
+    } catch (err) {
+      console.error('Share error:', err);
+    }
+  };
+
+  const displayName = dashboardData?.user?.name || user?.name || 'Member';
+  const walletBalance = Number(dashboardData?.wallet?.wallet_balance ?? user?.wallet_balance ?? 0);
+  const totalRevenue = Number(dashboardData?.wallet?.total_revenue ?? 0);
+  const totalMembers = dashboardData?.team?.total_members ?? 0;
+  const totalOrders = dashboardData?.orders?.total_orders ?? 0;
+  const referralCode = dashboardData?.referral?.referral_code || user?.referral_code || '';
+  const recentOrders = dashboardData?.orders?.recent_orders || [];
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => fetchDashboard(true)}
+            colors={['#E64A78']}
+            tintColor="#E64A78"
+          />
+        }
       >
         {/* ── Top Bar ── */}
         <View style={styles.topBar}>
           <View>
-            {/* <Text style={styles.greeting}>Good Morning 👋</Text> */}
-            <Text style={styles.userName}>Hello 👋! Rajesh Kumar</Text>
+            <Text style={styles.greeting}>Welcome Back 👋</Text>
+            <Text style={styles.userName}>{displayName}</Text>
           </View>
+          {loading && !refreshing && (
+            <ActivityIndicator size="small" color="#E64A78" />
+          )}
         </View>
 
         {/* ── Balance Banner ── */}
         <View style={styles.banner}>
-          {/* Gold offer tag */}
+          {/* Tag */}
           <View style={styles.offerTag}>
             <Ionicons name="star" size={11} color="#C89738" />
-            <Text style={styles.offerTagText}>Gold Member</Text>
+            <Text style={styles.offerTagText}>
+              {referralCode ? `Ref: ${referralCode}` : 'Member'}
+            </Text>
           </View>
 
           <Text style={styles.bannerLabel}>Total Balance</Text>
-          <Text style={styles.bannerAmount}>₹ 48,250</Text>
+          <Text style={styles.bannerAmount}>
+            ₹ {walletBalance.toLocaleString('en-IN')}
+          </Text>
 
           <View style={styles.bannerRow}>
-            <TouchableOpacity style={styles.bannerPrimaryBtn}>
-              <Ionicons name="add-circle-outline" size={16} color="#FFFFFF" />
-              <Text style={styles.bannerPrimaryBtnText}>Add Funds</Text>
+            <TouchableOpacity
+              style={styles.bannerPrimaryBtn}
+              activeOpacity={0.8}
+              onPress={() => navigation?.navigate?.('Shop')}
+            >
+              <Ionicons name="bag-handle-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.bannerPrimaryBtnText}>Explore Shop</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.bannerSecondaryBtn}>
-              <Ionicons name="arrow-up-circle-outline" size={16} color="#2A1E24" />
-              <Text style={styles.bannerSecondaryBtnText}>Withdraw</Text>
-            </TouchableOpacity>
+            {referralCode ? (
+              <TouchableOpacity
+                style={styles.bannerSecondaryBtn}
+                activeOpacity={0.8}
+                onPress={handleShareReferral}
+              >
+                <Ionicons name="share-social-outline" size={16} color="#FFFFFF" />
+                <Text style={styles.bannerSecondaryBtnText}>Share</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
-          {/* Decorative circle */}
+          {/* Decorative circles */}
           <View style={styles.bannerDecorCircle1} />
           <View style={styles.bannerDecorCircle2} />
         </View>
 
         {/* ── Stats ── */}
         <View style={styles.statsRow}>
-          {/* Earnings */}
-          <View style={styles.statCard}>
+          {/* Earnings / Revenue */}
+          <TouchableOpacity
+            style={styles.statCard}
+            activeOpacity={0.7}
+            onPress={() => navigation?.navigate?.('Wallet')}
+          >
             <View style={styles.statIconBox}>
               <Ionicons name="trending-up" size={18} color="#E64A78" />
             </View>
-            <Text style={styles.statValue}>₹12,840</Text>
-            <Text style={styles.statLabel}>Earnings</Text>
-            <View style={styles.trendBadge}>
-              <Ionicons name="arrow-up" size={9} color="#C89738" />
-              <Text style={styles.trendText}>+12%</Text>
-            </View>
-          </View>
+            <Text style={styles.statValue}>
+              ₹{totalRevenue.toLocaleString('en-IN')}
+            </Text>
+            <Text style={styles.statLabel}>Revenue</Text>
+          </TouchableOpacity>
 
           {/* Divider */}
           <View style={styles.statDivider} />
 
           {/* Network */}
-          <View style={styles.statCard}>
+          <TouchableOpacity
+            style={styles.statCard}
+            activeOpacity={0.7}
+            onPress={() => navigation?.navigate?.('Network')}
+          >
             <View style={[styles.statIconBox, { backgroundColor: '#FBF5E6' }]}>
               <Ionicons name="people-outline" size={18} color="#C89738" />
             </View>
-            <Text style={styles.statValue}>248</Text>
-            <Text style={styles.statLabel}>Network</Text>
-            <View style={styles.trendBadge}>
-              <Ionicons name="arrow-up" size={9} color="#C89738" />
-              <Text style={styles.trendText}>+5%</Text>
-            </View>
-          </View>
+            <Text style={styles.statValue}>{totalMembers}</Text>
+            <Text style={styles.statLabel}>Team</Text>
+          </TouchableOpacity>
 
           {/* Divider */}
           <View style={styles.statDivider} />
@@ -130,12 +185,8 @@ export default function HomeScreen() {
             <View style={[styles.statIconBox, { backgroundColor: '#EEF5FF' }]}>
               <Ionicons name="bag-outline" size={18} color="#4A7CE6" />
             </View>
-            <Text style={styles.statValue}>36</Text>
+            <Text style={styles.statValue}>{totalOrders}</Text>
             <Text style={styles.statLabel}>Orders</Text>
-            <View style={styles.trendBadge}>
-              <Ionicons name="arrow-up" size={9} color="#C89738" />
-              <Text style={styles.trendText}>+3%</Text>
-            </View>
           </View>
         </View>
 
@@ -143,7 +194,15 @@ export default function HomeScreen() {
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.actionsRow}>
           {QUICK_ACTIONS.map((action, i) => (
-            <TouchableOpacity key={i} style={styles.actionItem} activeOpacity={0.7}>
+            <TouchableOpacity
+              key={i}
+              style={styles.actionItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                if (action.label === 'Rewards') handleShareReferral();
+                if (action.label === 'Analytics') navigation?.navigate?.('Network');
+              }}
+            >
               <View style={[styles.actionIcon, { backgroundColor: action.bg }]}>
                 <Ionicons name={action.icon} size={24} color={action.color} />
               </View>
@@ -152,31 +211,67 @@ export default function HomeScreen() {
           ))}
         </View>
 
+        {/* ── Promo / Referral Banner ── */}
+        {referralCode ? (
+          <View style={styles.promoBanner}>
+            <View style={styles.promoLeft}>
+              <Text style={styles.promoEyebrow}>Refer & Earn</Text>
+              <Text style={styles.promoHeadline}>
+                Code: {referralCode}
+              </Text>
+              <TouchableOpacity
+                style={styles.promoBtn}
+                onPress={handleShareReferral}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="share-social-outline" size={14} color="#C89738" />
+                <Text style={styles.promoBtnText}>Share & Invite</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.promoRight}>
+              <Ionicons name="gift-outline" size={56} color="rgba(200,151,56,0.35)" />
+            </View>
+          </View>
+        ) : null}
+
         {/* ── Recent Activity ── */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recent Activity</Text>
-          <TouchableOpacity>
-            <Text style={styles.seeAll}>See All</Text>
-          </TouchableOpacity>
+          <Text style={styles.sectionTitle}>Recent Orders</Text>
+          {recentOrders.length > 0 && (
+            <TouchableOpacity onPress={() => navigation?.navigate?.('Shop')}>
+              <Text style={styles.seeAll}>View Shop</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {ACTIVITY.map((item, i) => (
-          <View key={i} style={styles.activityCard}>
-            <View style={[styles.activityIcon, { backgroundColor: item.bg }]}>
-              <Ionicons name={item.icon} size={18} color={item.iconColor} />
+        {recentOrders.length > 0 ? (
+          recentOrders.map((item, i) => (
+            <View key={item.order_id || i} style={styles.activityCard}>
+              <View style={[styles.activityIcon, { backgroundColor: '#FFF0F4' }]}>
+                <Ionicons name="bag-check-outline" size={20} color="#E64A78" />
+              </View>
+              <View style={styles.activityInfo}>
+                <Text style={styles.activityTitle} numberOfLines={1}>
+                  {item.product_name}
+                </Text>
+                <Text style={styles.activityDate}>
+                  {item.created_at || 'Recently'} • Qty: {item.quantity}
+                </Text>
+              </View>
+              <Text style={[styles.activityAmount, { color: '#27A462' }]}>
+                ₹{Number(item.total_amount || 0).toLocaleString('en-IN')}
+              </Text>
             </View>
-            <View style={styles.activityInfo}>
-              <Text style={styles.activityTitle}>{item.title}</Text>
-              <Text style={styles.activityDate}>{item.date}</Text>
-            </View>
-            <Text style={[
-              styles.activityAmount,
-              { color: item.positive ? '#27A462' : '#E64A78' },
-            ]}>
-              {item.amount}
+          ))
+        ) : (
+          <View style={styles.emptyCard}>
+            <Ionicons name="receipt-outline" size={36} color="#C4B8BC" />
+            <Text style={styles.emptyCardTitle}>No Recent Orders</Text>
+            <Text style={styles.emptyCardSub}>
+              Start shopping or grow your team to see activity here.
             </Text>
           </View>
-        ))}
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -523,5 +618,30 @@ const styles = StyleSheet.create({
   activityAmount: {
     fontFamily: 'Poppins_700Bold',
     fontSize: 14,
+  },
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#F0EAED',
+    borderStyle: 'dashed',
+    marginBottom: 20,
+  },
+  emptyCardTitle: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 15,
+    color: '#2A1E24',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  emptyCardSub: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 12,
+    color: '#9E8E93',
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

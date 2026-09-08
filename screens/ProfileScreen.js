@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -6,26 +6,31 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
+  Image,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useAuth } from '../contexts/AuthContext';
+import profileService from '../services/profileService';
 
 const MENU_SECTIONS = [
   {
     title: 'Account',
     items: [
-      { icon: 'person-outline',        label: 'Edit Profile',       color: '#E64A78' },
-      { icon: 'wallet-outline',         label: 'My Wallet',          color: '#C89738' },
-      { icon: 'document-text-outline',  label: 'My Orders',          color: '#7B61C4' },
+      { icon: 'person-outline',        label: 'Edit Profile',       color: '#E64A78', route: 'EditProfile' },
+      { icon: 'wallet-outline',         label: 'My Wallet',          color: '#C89738', route: 'Wallet' },
+      { icon: 'location-outline',       label: 'My Addresses',       color: '#27A462', route: 'Addresses' },
+      { icon: 'document-text-outline',  label: 'My Orders',          color: '#7B61C4', route: 'Orders' },
     ],
   },
   {
     title: 'Settings',
     items: [
-      { icon: 'notifications-outline',  label: 'Notifications',      color: '#E64A78' },
-      { icon: 'lock-closed-outline',    label: 'Privacy & Security',  color: '#4A7CE6' },
-      { icon: 'language-outline',       label: 'Language',           color: '#27A462' },
+      { icon: 'document-text-outline',   label: 'Terms & Conditions', color: '#C89738', route: 'TermsConditions' },
+      { icon: 'shield-checkmark-outline', label: 'Privacy Policy',      color: '#4A7CE6', route: 'PrivacyPolicy' },
+      { icon: 'trash-outline',          label: 'Delete Account',      color: '#EF4444', route: 'DeleteAccount' },
     ],
   },
   {
@@ -40,6 +45,44 @@ const MENU_SECTIONS = [
 
 export default function ProfileScreen() {
   const navigation = useNavigation();
+  const { user, logout, refreshProfile } = useAuth();
+  const [refreshing, setRefreshing] = useState(false);
+  const [profileData, setProfileData] = useState(user);
+
+  // Sync profile data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+      (async () => {
+        try {
+          const res = await profileService.getProfile();
+          if (isMounted && res.success && res.data) {
+            setProfileData(res.data);
+          }
+        } catch (err) {
+          console.log('Profile sync on focus error:', err.message);
+        }
+      })();
+      return () => {
+        isMounted = false;
+      };
+    }, [])
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const res = await profileService.getProfile();
+      if (res.success && res.data) {
+        setProfileData(res.data);
+        if (refreshProfile) await refreshProfile();
+      }
+    } catch (err) {
+      console.log('Profile refresh error:', err.message);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshProfile]);
 
   const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
@@ -47,48 +90,106 @@ export default function ProfileScreen() {
       {
         text: 'Logout',
         style: 'destructive',
-        onPress: () =>
-          navigation.reset({ index: 0, routes: [{ name: 'Login' }] }),
+        onPress: async () => {
+          await logout();
+          navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+        },
       },
     ]);
   };
+
+  const handleMenuItemPress = (item) => {
+    if (item.route) {
+      navigation.navigate(item.route);
+    } else {
+      Alert.alert(item.label, `${item.label} will be available soon!`);
+    }
+  };
+
+  const currentUser = profileData || user;
+  const initials = currentUser?.name
+    ? currentUser.name
+        .split(' ')
+        .filter(Boolean)
+        .map((n) => n[0])
+        .join('')
+        .substring(0, 2)
+        .toUpperCase()
+    : 'DS';
+
+  const avatarUri = currentUser?.profile_image || currentUser?.image;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#E64A78']}
+            tintColor="#E64A78"
+          />
+        }
       >
         {/* Profile Header */}
         <View style={styles.profileHeader}>
           <View style={styles.avatarWrapper}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>RK</Text>
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.avatarImg} />
+              ) : (
+                <Text style={styles.avatarText}>{initials}</Text>
+              )}
             </View>
-            <TouchableOpacity style={styles.editAvatar}>
+            <TouchableOpacity
+              style={styles.editAvatar}
+              onPress={() => navigation.navigate('EditProfile')}
+              activeOpacity={0.8}
+            >
               <Ionicons name="camera" size={13} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
-          <Text style={styles.profileName}>Rajesh Kumar</Text>
-          <Text style={styles.profilePhone}>+91 98765 43210</Text>
+          <Text style={styles.profileName}>{currentUser?.name || 'User'}</Text>
+          <Text style={styles.profilePhone}>
+            {currentUser?.phone || currentUser?.mobile
+              ? `+91 ${currentUser?.phone || currentUser?.mobile}`
+              : ''}
+          </Text>
           <View style={styles.levelBadge}>
             <Ionicons name="star" size={11} color="#C89738" />
-            <Text style={styles.levelText}>Gold Member</Text>
+            <Text style={styles.levelText}>
+              {currentUser?.referral_code
+                ? `Ref: ${currentUser.referral_code}`
+                : 'Member'}
+            </Text>
           </View>
         </View>
 
         {/* Stats */}
         <View style={styles.statsCard}>
           {[
-            { label: 'Earnings', value: '₹48K' },
-            { label: 'Members',  value: '248'  },
-            { label: 'Orders',   value: '36'   },
+            {
+              label: 'Earnings',
+              value: currentUser?.wallet_balance
+                ? `₹${Number(currentUser.wallet_balance).toLocaleString('en-IN')}`
+                : '₹48K',
+              onPress: () => navigation.navigate('Wallet'),
+            },
+            { label: 'Members', value: '248', onPress: () => navigation.navigate('Network') },
+            { label: 'Orders', value: '36', onPress: null },
           ].map((s, i) => (
             <React.Fragment key={i}>
-              <View style={styles.statItem}>
+              <TouchableOpacity
+                style={styles.statItem}
+                onPress={s.onPress}
+                activeOpacity={s.onPress ? 0.7 : 1}
+                disabled={!s.onPress}
+              >
                 <Text style={styles.statValue}>{s.value}</Text>
                 <Text style={styles.statLabel}>{s.label}</Text>
-              </View>
+              </TouchableOpacity>
               {i < 2 && <View style={styles.statDivider} />}
             </React.Fragment>
           ))}
@@ -106,6 +207,7 @@ export default function ProfileScreen() {
                     styles.menuItem,
                     ii < section.items.length - 1 && styles.menuItemBorder,
                   ]}
+                  onPress={() => handleMenuItemPress(item)}
                   activeOpacity={0.6}
                 >
                   <View style={[styles.menuIcon, { backgroundColor: item.color + '15' }]}>
@@ -125,7 +227,7 @@ export default function ProfileScreen() {
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
 
-        <Text style={styles.version}>Divy Shakti v1.0.0</Text>
+        <Text style={styles.version}>Divya Shakti v1.0.0</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -158,6 +260,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 12,
     elevation: 8,
+    overflow: 'hidden',
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 28,
   },
   avatarText: {
     fontFamily: 'Poppins_700Bold',

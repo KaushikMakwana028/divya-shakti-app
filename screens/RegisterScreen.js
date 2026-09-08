@@ -9,23 +9,63 @@ import {
     Platform,
     ScrollView,
     Image,
+    Alert,
+    ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import authService from '../services/authService';
 
 const LOGO_URL = 'https://images.unsplash.com/photo-1620288627223-53302f4e8c74?w=400&h=400&fit=crop';
 
 export default function RegisterScreen({ navigation }) {
-    const [form, setForm] = useState({ name: '', email: '', phone: '' });
+    const [form, setForm] = useState({ name: '', phone: '', referral_code: '' });
     const [focused, setFocused] = useState('');
+    const [loading, setLoading] = useState(false);
 
     const updateForm = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
-    const isValid = form.name && form.phone.length === 10;
+    const isValid = form.name.trim().length > 0 && form.phone.length === 10;
 
-    const handleRegister = () => {
-        if (isValid) {
-            navigation.navigate('OtpVerify', { phone: form.phone });
+    const handleRegister = async () => {
+        if (!isValid || loading) return;
+
+        setLoading(true);
+        try {
+            const result = await authService.register(
+                form.name.trim(),
+                form.phone,
+                form.referral_code?.trim() || undefined
+            );
+            if (result.success) {
+                navigation.navigate('OtpVerify', {
+                    phone: form.phone,
+                    name: form.name.trim(),
+                    referral_code: form.referral_code?.trim() || '',
+                    maskedMobile: result.data?.masked_mobile || form.phone,
+                    isRegister: true,
+                });
+            } else {
+                if (
+                    result.message &&
+                    result.message.toLowerCase().includes('already registered')
+                ) {
+                    Alert.alert('Already Registered', result.message, [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                            text: 'Sign In',
+                            onPress: () => navigation.navigate('Login'),
+                        },
+                    ]);
+                } else {
+                    Alert.alert('Registration Failed', result.message || 'Failed to send OTP');
+                }
+            }
+        } catch (error) {
+            console.error('Registration error:', error);
+            Alert.alert('Error', 'Something went wrong. Please try again.');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -96,17 +136,23 @@ export default function RegisterScreen({ navigation }) {
                     {/* Card */}
                     <View style={styles.card}>
                         {renderInput('name', 'Full Name', 'Enter your full name', 'default', 'person-outline')}
-                        {renderInput('email', 'Email Address', 'Enter your email (optional)', 'email-address', 'mail-outline')}
                         {renderInput('phone', 'Phone Number', 'Enter 10-digit mobile number', 'phone-pad', 'call-outline')}
+                        {renderInput('referral_code', 'Referral Code (Optional)', 'Enter referral code if any', 'default', 'gift-outline')}
 
                         <TouchableOpacity
-                            style={[styles.primaryBtn, !isValid && styles.primaryBtnDisabled]}
+                            style={[styles.primaryBtn, (!isValid || loading) && styles.primaryBtnDisabled]}
                             onPress={handleRegister}
                             activeOpacity={0.8}
-                            disabled={!isValid}
+                            disabled={!isValid || loading}
                         >
-                            <Text style={styles.primaryBtnText}>Continue with OTP</Text>
-                            <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+                            {loading ? (
+                                <ActivityIndicator color="#FFFFFF" size="small" />
+                            ) : (
+                                <>
+                                    <Text style={styles.primaryBtnText}>Continue with OTP</Text>
+                                    <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+                                </>
+                            )}
                         </TouchableOpacity>
                     </View>
 

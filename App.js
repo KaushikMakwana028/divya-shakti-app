@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import AppNavigator from './navigation/AppNavigator';
 import { StatusBar } from 'expo-status-bar';
 import { CartProvider } from './contexts/CartContext';
+import { AuthProvider } from './contexts/AuthContext';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -27,9 +28,11 @@ export default function App() {
   return (
     <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
       <StatusBar style="dark" backgroundColor="#FAF7F8" />
-      <CartProvider>
-        <AppNavigator />
-      </CartProvider>
+      <AuthProvider>
+        <CartProvider>
+          <AppNavigator />
+        </CartProvider>
+      </AuthProvider>
     </View>
   );
 }

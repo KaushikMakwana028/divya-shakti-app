@@ -1,0 +1,270 @@
+import axios from 'axios';
+import API_CONFIG from '../config/api';
+import storageService from './storageService';
+
+class WalletService {
+    constructor() {
+        this.api = axios.create({
+            baseURL: API_CONFIG.BASE_URL,
+            timeout: API_CONFIG.TIMEOUT,
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+
+        this.api.interceptors.request.use(
+            async (config) => {
+                const token = await storageService.getToken();
+                if (token) {
+                    config.headers.Authorization = `Bearer ${token}`;
+                }
+                return config;
+            },
+            (error) => Promise.reject(error)
+        );
+    }
+
+    // ─────────────────────────────────────────
+    // Get Current Wallet Balance
+    // GET /api/get_wallet_balance
+    // ─────────────────────────────────────────
+    async getWalletBalance() {
+        try {
+            const token = await storageService.getToken();
+            if (!token) {
+                return {
+                    success: false,
+                    balance: 0,
+                    message: 'User is not logged in',
+                };
+            }
+
+            const response = await this.api.get('/get_wallet_balance');
+            if (response.data && response.data.status) {
+                const balance = Number(response.data.data?.wallet_balance) || 0;
+                return {
+                    success: true,
+                    balance: balance,
+                    data: response.data.data,
+                    message: response.data.message || 'Wallet balance retrieved successfully',
+                };
+            }
+
+            return {
+                success: false,
+                balance: 0,
+                message: response.data?.message || 'Failed to fetch wallet balance',
+            };
+        } catch (error) {
+            console.error('WalletService getWalletBalance error:', error.response?.data || error.message);
+            return {
+                success: false,
+                balance: 0,
+                message: error.response?.data?.message || error.message || 'Failed to fetch wallet balance',
+            };
+        }
+    }
+
+    // ─────────────────────────────────────────
+    // Get Wallet Transactions (Paginated)
+    // GET /api/get_wallet_transactions
+    // ─────────────────────────────────────────
+    async getWalletTransactions(page = 1, limit = 20) {
+        try {
+            const token = await storageService.getToken();
+            if (!token) {
+                return {
+                    success: false,
+                    transactions: [],
+                    total: 0,
+                    message: 'User is not logged in',
+                };
+            }
+
+            const response = await this.api.get('/get_wallet_transactions', {
+                params: { page, limit },
+            });
+
+            if (response.data && response.data.status) {
+                const data = response.data.data;
+                return {
+                    success: true,
+                    transactions: data?.transactions || [],
+                    total: data?.total || 0,
+                    page: data?.page || page,
+                    limit: data?.limit || limit,
+                    message: response.data.message || 'Transactions retrieved successfully',
+                };
+            }
+
+            return {
+                success: false,
+                transactions: [],
+                total: 0,
+                message: response.data?.message || 'Failed to fetch transactions',
+            };
+        } catch (error) {
+            console.error('WalletService getWalletTransactions error:', error.response?.data || error.message);
+            return {
+                success: false,
+                transactions: [],
+                total: 0,
+                message: error.response?.data?.message || error.message || 'Failed to fetch transactions',
+            };
+        }
+    }
+
+    // ─────────────────────────────────────────
+    // Get Deposit Requests (Paginated)
+    // GET /api/get_deposit_requests
+    // ─────────────────────────────────────────
+    async getDepositRequests(page = 1, limit = 20) {
+        try {
+            const token = await storageService.getToken();
+            if (!token) {
+                return {
+                    success: false,
+                    requests: [],
+                    total: 0,
+                    message: 'User is not logged in',
+                };
+            }
+
+            const response = await this.api.get('/get_deposit_requests', {
+                params: { page, limit },
+            });
+
+            if (response.data && response.data.status) {
+                const data = response.data.data;
+                return {
+                    success: true,
+                    requests: data?.requests || [],
+                    total: data?.total || 0,
+                    page: data?.page || page,
+                    limit: data?.limit || limit,
+                    message: response.data.message || 'Deposit requests retrieved successfully',
+                };
+            }
+
+            return {
+                success: false,
+                requests: [],
+                total: 0,
+                message: response.data?.message || 'Failed to fetch deposit requests',
+            };
+        } catch (error) {
+            console.error('WalletService getDepositRequests error:', error.response?.data || error.message);
+            return {
+                success: false,
+                requests: [],
+                total: 0,
+                message: error.response?.data?.message || error.message || 'Failed to fetch deposit requests',
+            };
+        }
+    }
+
+    // ─────────────────────────────────────────
+    // Request Wallet Deposit
+    // POST /api/request_wallet_deposit
+    // Supports Cash and Online (with proof receipt)
+    // ─────────────────────────────────────────
+    async requestWalletDeposit({ amount, payment_method = 'cash', remark = '', proof_file = null }) {
+        try {
+            const token = await storageService.getToken();
+            if (!token) {
+                return {
+                    success: false,
+                    data: null,
+                    message: 'User is not logged in',
+                };
+            }
+
+            let response;
+            if (proof_file && proof_file.uri) {
+                const formData = new FormData();
+                formData.append('amount', String(amount));
+                formData.append('payment_method', payment_method);
+                if (remark) formData.append('remark', String(remark));
+
+                const filename = proof_file.fileName || proof_file.name || `deposit_proof_${Date.now()}.jpg`;
+                const type = proof_file.mimeType || proof_file.type || 'image/jpeg';
+                formData.append('proof_file', {
+                    uri: proof_file.uri,
+                    name: filename,
+                    type: type,
+                });
+
+                response = await this.api.post('/request_wallet_deposit', formData, {
+                    headers: {
+                        'Content-Type': 'multipart/form-data',
+                    },
+                    transformRequest: (data) => data,
+                });
+            } else {
+                response = await this.api.post('/request_wallet_deposit', {
+                    amount: Number(amount),
+                    payment_method: payment_method,
+                    remark: remark || null,
+                });
+            }
+
+            if (response.data && response.data.status) {
+                return {
+                    success: true,
+                    data: response.data.data,
+                    message: response.data.message || 'Deposit request submitted successfully',
+                };
+            }
+
+            return {
+                success: false,
+                data: null,
+                message: response.data?.message || 'Failed to submit deposit request',
+            };
+        } catch (error) {
+            console.error('WalletService requestWalletDeposit error:', error.response?.data || error.message);
+            return {
+                success: false,
+                data: null,
+                message: error.response?.data?.message || error.message || 'Failed to submit deposit request',
+            };
+        }
+    }
+
+    // ─────────────────────────────────────────
+    // Add Wallet Money (Admin Only)
+    // POST /api/add_wallet_money
+    // ─────────────────────────────────────────
+    async addWalletMoney({ user_id, amount, remark = '' }) {
+        try {
+            const response = await this.api.post('/add_wallet_money', {
+                user_id: Number(user_id),
+                amount: Number(amount),
+                remark: remark || null,
+            });
+
+            if (response.data && response.data.status) {
+                return {
+                    success: true,
+                    data: response.data.data,
+                    message: response.data.message || 'Wallet money credited successfully',
+                };
+            }
+
+            return {
+                success: false,
+                data: null,
+                message: response.data?.message || 'Failed to credit wallet money',
+            };
+        } catch (error) {
+            console.error('WalletService addWalletMoney error:', error.response?.data || error.message);
+            return {
+                success: false,
+                data: null,
+                message: error.response?.data?.message || error.message || 'Failed to credit wallet money',
+            };
+        }
+    }
+}
+
+export default new WalletService();
