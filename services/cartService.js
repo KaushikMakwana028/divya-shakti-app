@@ -97,19 +97,27 @@ class CartService {
             };
         } catch (error) {
             const errData = error.response?.data;
+            const profileData = errData?.data || null;
+            const msg = errData?.message || error.message || 'Failed to add product to cart';
+            const isUnderReview =
+                error.response?.status === 403 &&
+                (profileData?.is_profile_active === false ||
+                    Number(profileData?.profile_completion_percentage) >= 100 ||
+                    (typeof msg === 'string' &&
+                        (msg.toLowerCase().includes('review') ||
+                            msg.toLowerCase().includes('activate') ||
+                            msg.toLowerCase().includes('activation'))));
             const isProfileIncomplete =
                 error.response?.status === 403 ||
-                errData?.data?.is_profile_completed === false;
-            console.log('CartService addToCart info:', errData?.message || error.message);
+                profileData?.is_profile_completed === false;
+            console.log('CartService addToCart info:', msg);
             return {
                 success: false,
+                isUnderReview: !!isUnderReview,
                 isProfileIncomplete,
-                profileData: errData?.data || null,
-                data: errData?.data || null,
-                message:
-                    errData?.message ||
-                    error.message ||
-                    'Failed to add product to cart',
+                profileData,
+                data: profileData,
+                message: msg,
             };
         }
     }

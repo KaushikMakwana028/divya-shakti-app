@@ -65,6 +65,7 @@ export function CartProvider({ children }) {
         return {
           success: false,
           isProfileIncomplete: res.isProfileIncomplete,
+          isUnderReview: res.isUnderReview,
           profileData: res.profileData,
           message: res.message,
         };

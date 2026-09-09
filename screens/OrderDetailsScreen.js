@@ -8,17 +8,21 @@ import {
   Image,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import orderService from '../services/orderService';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function OrderDetailsScreen({ route, navigation }) {
   const orderId = route?.params?.orderId;
+  const { refreshProfile } = useAuth();
 
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const fetchDetails = useCallback(async () => {
@@ -53,21 +57,104 @@ export default function OrderDetailsScreen({ route, navigation }) {
     fetchDetails();
   };
 
-  const getStatusConfig = (status) => {
+  const handlePayNow = async () => {
+    if (!order) return;
+    Alert.alert(
+      'Confirm Payment',
+      `Pay ₹${Number(order.amount || 0).toLocaleString('en-IN')} from your wallet for Order #${order.id}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Pay Now',
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              const res = await orderService.verifyPayment(order.id);
+              if (res.success) {
+                await refreshProfile();
+                Alert.alert('Success', 'Payment verified and order confirmed successfully!');
+                fetchDetails();
+              } else {
+                Alert.alert('Payment Failed', res.message || 'Could not verify payment.');
+              }
+            } catch (err) {
+              Alert.alert('Error', err.message || 'Payment processing failed.');
+            } finally {
+              setActionLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCancelOrder = async () => {
+    if (!order) return;
+    const isPaid = Boolean(order.is_paid || order.status?.toLowerCase() === 'confirmed');
+    const alertTitle = isPaid ? 'Cancel Order & Refund' : 'Cancel Order';
+    const alertMsg = isPaid
+      ? `Are you sure you want to cancel Order #${order.id}? The paid amount of ₹${Number(order.amount || 0).toLocaleString('en-IN')} will be refunded immediately to your Divya Shakti wallet.`
+      : `Are you sure you want to cancel Order #${order.id}?`;
+
+    Alert.alert(
+      alertTitle,
+      alertMsg,
+      [
+        { text: 'Keep Order', style: 'cancel' },
+        {
+          text: isPaid ? 'Yes, Cancel & Refund' : 'Yes, Cancel',
+          style: 'destructive',
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              const res = await orderService.cancelOrder(order.id);
+              if (res.success) {
+                await refreshProfile();
+                Alert.alert(
+                  'Order Cancelled',
+                  res.message ||
+                    (isPaid
+                      ? `Your order has been cancelled and ₹${Number(order.amount || 0).toLocaleString('en-IN')} has been refunded to your wallet.`
+                      : 'Your order has been cancelled successfully.')
+                );
+                fetchDetails();
+              } else {
+                Alert.alert('Cannot Cancel', res.message || 'Failed to cancel order.');
+              }
+            } catch (err) {
+              Alert.alert('Error', err.message || 'Cancellation failed.');
+            } finally {
+              setActionLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const getStatusConfig = (status, isPaid = false) => {
     switch (status?.toLowerCase()) {
       case 'completed':
       case 'delivered':
         return {
-          label: 'Completed / Delivered',
-          color: '#27A462',
-          bg: '#E8F5E9',
-          icon: 'checkmark-circle',
+          label: 'Delivered',
+          color: '#10B981',
+          bg: '#E8F8F0',
+          icon: 'checkmark-done-circle',
+          step: 5,
+        };
+      case 'out_for_delivery':
+        return {
+          label: 'Out for Delivery',
+          color: '#EA580C',
+          bg: '#FFF7ED',
+          icon: 'bicycle',
           step: 4,
         };
-      case 'shipped':
+      case 'packed':
         return {
-          label: 'Shipped & In Transit',
-          color: '#8B5CF6',
+          label: 'Order Packed',
+          color: '#7C3AED',
           bg: '#F5F3FF',
           icon: 'cube',
           step: 3,
@@ -75,12 +162,28 @@ export default function OrderDetailsScreen({ route, navigation }) {
       case 'processing':
       case 'confirmed':
         return {
-          label: 'Processing Order',
-          color: '#3B82F6',
+          label: 'Order Confirmed',
+          color: '#2563EB',
           bg: '#EFF6FF',
-          icon: 'sync',
+          icon: 'checkmark-circle',
           step: 2,
         };
+      case 'placed':
+        return isPaid
+          ? {
+              label: 'Order Placed & Paid',
+              color: '#2563EB',
+              bg: '#EFF6FF',
+              icon: 'checkmark-circle',
+              step: 2,
+            }
+          : {
+              label: 'Payment Pending',
+              color: '#D97706',
+              bg: '#FEF3C7',
+              icon: 'time',
+              step: 1,
+            };
       case 'cancelled':
         return {
           label: 'Cancelled',
@@ -89,10 +192,11 @@ export default function OrderDetailsScreen({ route, navigation }) {
           icon: 'close-circle',
           step: 0,
         };
+      case 'pending':
       default:
         return {
-          label: 'Order Placed (Pending)',
-          color: '#F59E0B',
+          label: 'Payment Pending',
+          color: '#D97706',
           bg: '#FEF3C7',
           icon: 'time',
           step: 1,
@@ -144,10 +248,9 @@ export default function OrderDetailsScreen({ route, navigation }) {
           <Text style={styles.headerTitle}>Order Details</Text>
           <View style={{ width: 40 }} />
         </View>
-        <View style={styles.errorCenter}>
-          <Ionicons name="alert-circle-outline" size={54} color="#EF4444" />
-          <Text style={styles.errorTitle}>Unable to load order</Text>
-          <Text style={styles.errorSubtitle}>{error || 'Order not found.'}</Text>
+        <View style={styles.errorBox}>
+          <Ionicons name="alert-circle-outline" size={50} color="#EF4444" />
+          <Text style={styles.errorText}>{error || 'Order could not be found'}</Text>
           <TouchableOpacity
             style={styles.retryBtn}
             onPress={() => {
@@ -162,7 +265,7 @@ export default function OrderDetailsScreen({ route, navigation }) {
     );
   }
 
-  const statusCfg = getStatusConfig(order.status);
+  const statusCfg = getStatusConfig(order.status, order.is_paid);
   const addr = order.shipping_address;
 
   return (
@@ -214,10 +317,31 @@ export default function OrderDetailsScreen({ route, navigation }) {
             <Text style={styles.sectionHeader}>Order Tracking</Text>
             <View style={styles.timelineList}>
               {[
-                { title: 'Order Placed', desc: formatDate(order.created_at), done: statusCfg.step >= 1 },
-                { title: 'Order Confirmed', desc: 'Verified by merchant', done: statusCfg.step >= 2 },
-                { title: 'Dispatched & Shipped', desc: 'Handed to courier', done: statusCfg.step >= 3 },
-                { title: 'Delivered', desc: 'Completed successfully', done: statusCfg.step >= 4 },
+                {
+                  title: 'Order Placed',
+                  desc: formatDate(order.created_at),
+                  done: statusCfg.step >= 1,
+                },
+                {
+                  title: 'Order Confirmed',
+                  desc: statusCfg.step >= 2 ? 'Payment verified & confirmed' : 'Awaiting payment verification',
+                  done: statusCfg.step >= 2,
+                },
+                {
+                  title: 'Order Packed',
+                  desc: statusCfg.step >= 3 ? 'Item packed at warehouse' : 'Packing pending',
+                  done: statusCfg.step >= 3,
+                },
+                {
+                  title: 'Out for Delivery',
+                  desc: statusCfg.step >= 4 ? 'With delivery partner' : 'Dispatch pending',
+                  done: statusCfg.step >= 4,
+                },
+                {
+                  title: 'Delivered',
+                  desc: statusCfg.step >= 5 ? 'Completed successfully' : 'Delivery pending',
+                  done: statusCfg.step >= 5,
+                },
               ].map((stepItem, idx) => (
                 <View key={idx} style={styles.timelineRow}>
                   <View style={styles.timelineIndicatorCol}>
@@ -233,7 +357,7 @@ export default function OrderDetailsScreen({ route, navigation }) {
                         <View style={styles.timelineDot} />
                       )}
                     </View>
-                    {idx < 3 && (
+                    {idx < 4 && (
                       <View
                         style={[
                           styles.timelineLine,
@@ -360,12 +484,137 @@ export default function OrderDetailsScreen({ route, navigation }) {
           </View>
           <View style={styles.summaryDivider} />
           <View style={styles.summaryRow}>
-            <Text style={styles.totalLabel}>Total Amount Paid</Text>
+            <Text style={styles.totalLabel}>
+              {!order.is_paid ? 'Total Payable' : 'Total Amount Paid'}
+            </Text>
             <Text style={styles.totalValue}>
               ₹{Number(order.amount || 0).toLocaleString('en-IN')}
             </Text>
           </View>
         </View>
+
+        {/* Pending Order Actions (Unpaid) */}
+        {!order.is_paid && (order.status?.toLowerCase() === 'pending' || order.status?.toLowerCase() === 'placed') && (
+          <View style={styles.pendingActionBox}>
+            <View style={styles.pendingAlertHeader}>
+              <Ionicons name="time" size={18} color="#D97706" />
+              <Text style={styles.pendingAlertTitle}>Payment Pending</Text>
+            </View>
+            <Text style={styles.pendingAlertDesc}>
+              Complete payment from your wallet balance to confirm and dispatch your order.
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.payNowBtn, actionLoading && styles.btnDisabled]}
+              activeOpacity={0.8}
+              disabled={actionLoading}
+              onPress={handlePayNow}
+            >
+              {actionLoading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons name="wallet-outline" size={18} color="#FFFFFF" />
+                  <Text style={styles.payNowBtnText}>
+                    Pay ₹{Number(order.amount || 0).toLocaleString('en-IN')} with Wallet
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.cancelBtn, actionLoading && styles.btnDisabled]}
+              activeOpacity={0.7}
+              disabled={actionLoading}
+              onPress={handleCancelOrder}
+            >
+              <Text style={styles.cancelBtnText}>Cancel Order</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Confirmed / Placed & Paid Order Actions (User can cancel for full wallet refund before packed) */}
+        {Boolean(order.is_paid) && (order.status?.toLowerCase() === 'confirmed' || order.status?.toLowerCase() === 'placed') && (
+          <View style={styles.confirmedActionBox}>
+            <View style={styles.confirmedAlertHeader}>
+              <Ionicons name="checkmark-circle" size={18} color="#2563EB" />
+              <Text style={styles.confirmedAlertTitle}>Order Placed & Paid</Text>
+            </View>
+            <Text style={styles.confirmedAlertDesc}>
+              Payment received. Your order is being prepared for packaging. You can cancel this order before packing begins to receive an immediate refund in your wallet.
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.cancelRefundBtn, actionLoading && styles.btnDisabled]}
+              activeOpacity={0.7}
+              disabled={actionLoading}
+              onPress={handleCancelOrder}
+            >
+              {actionLoading ? (
+                <ActivityIndicator size="small" color="#EF4444" />
+              ) : (
+                <>
+                  <Ionicons name="close-circle-outline" size={17} color="#EF4444" />
+                  <Text style={styles.cancelRefundBtnText}>
+                    Cancel Order (Refund ₹{Number(order.amount || 0).toLocaleString('en-IN')} to Wallet)
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Packed / Out for Delivery Notice */}
+        {(order.status?.toLowerCase() === 'packed' || order.status?.toLowerCase() === 'out_for_delivery') && (
+          <View style={styles.shippingNoticeBox}>
+            <View style={styles.shippingNoticeHeader}>
+              <Ionicons
+                name={order.status?.toLowerCase() === 'packed' ? 'cube' : 'bicycle'}
+                size={18}
+                color={order.status?.toLowerCase() === 'packed' ? '#7C3AED' : '#EA580C'}
+              />
+              <Text
+                style={[
+                  styles.shippingNoticeTitle,
+                  { color: order.status?.toLowerCase() === 'packed' ? '#6D28D9' : '#C2410C' },
+                ]}
+              >
+                {order.status?.toLowerCase() === 'packed' ? 'Order Packed' : 'Out for Delivery'}
+              </Text>
+            </View>
+            <Text style={styles.shippingNoticeDesc}>
+              {order.status?.toLowerCase() === 'packed'
+                ? 'Your order has been securely packed at our fulfillment warehouse and is awaiting courier pickup. It can no longer be cancelled.'
+                : 'Your order is on the way with our courier delivery executive and will reach you shortly.'}
+            </Text>
+          </View>
+        )}
+
+        {/* Delivered Notice */}
+        {(order.status?.toLowerCase() === 'delivered' || order.status?.toLowerCase() === 'completed') && (
+          <View style={styles.deliveredNoticeBox}>
+            <View style={styles.deliveredNoticeHeader}>
+              <Ionicons name="checkmark-done-circle" size={20} color="#10B981" />
+              <Text style={styles.deliveredNoticeTitle}>Delivered Successfully</Text>
+            </View>
+            <Text style={styles.deliveredNoticeDesc}>
+              Thank you for shopping with Divya Shakti! We hope your divine idol brings blessings, prosperity, and peace into your home.
+            </Text>
+          </View>
+        )}
+
+        {/* Cancelled Notice */}
+        {order.status?.toLowerCase() === 'cancelled' && (
+          <View style={styles.cancelledNoticeBox}>
+            <View style={styles.cancelledNoticeHeader}>
+              <Ionicons name="close-circle" size={20} color="#EF4444" />
+              <Text style={styles.cancelledNoticeTitle}>Order Cancelled</Text>
+            </View>
+            <Text style={styles.cancelledNoticeDesc}>
+              This order was cancelled. Any paid amount has been refunded directly to your Divya Shakti wallet.
+            </Text>
+          </View>
+        )}
 
         {/* Need Help CTA */}
         <TouchableOpacity
@@ -746,5 +995,180 @@ const styles = StyleSheet.create({
     color: '#E64A78',
     fontSize: 15,
     fontWeight: '700',
+  },
+  pendingActionBox: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1.5,
+    borderColor: '#FDE68A',
+    marginBottom: 16,
+  },
+  pendingAlertHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  pendingAlertTitle: {
+    fontSize: 14.5,
+    fontWeight: '700',
+    color: '#B45309',
+  },
+  pendingAlertDesc: {
+    fontSize: 12.5,
+    color: '#92400E',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  payNowBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E64A78',
+    paddingVertical: 14,
+    borderRadius: 14,
+    gap: 8,
+    marginBottom: 10,
+    shadowColor: '#E64A78',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  payNowBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14.5,
+    fontWeight: '700',
+  },
+  cancelBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#EF4444',
+  },
+  cancelBtnText: {
+    color: '#EF4444',
+    fontSize: 13.5,
+    fontWeight: '600',
+  },
+  btnDisabled: {
+    opacity: 0.6,
+  },
+  confirmedActionBox: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1.5,
+    borderColor: '#BFDBFE',
+    marginBottom: 16,
+  },
+  confirmedAlertHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  confirmedAlertTitle: {
+    fontSize: 14.5,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  confirmedAlertDesc: {
+    fontSize: 12.5,
+    color: '#1E40AF',
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  cancelRefundBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#EF4444',
+  },
+  cancelRefundBtnText: {
+    color: '#EF4444',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  shippingNoticeBox: {
+    backgroundColor: '#F5F3FF',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: '#DDD6FE',
+    marginBottom: 16,
+  },
+  shippingNoticeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  shippingNoticeTitle: {
+    fontSize: 14.5,
+    fontWeight: '700',
+    color: '#6D28D9',
+  },
+  shippingNoticeDesc: {
+    fontSize: 12.5,
+    color: '#5B21B6',
+    lineHeight: 18,
+  },
+  deliveredNoticeBox: {
+    backgroundColor: '#ECFDF5',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: '#A7F3D0',
+    marginBottom: 16,
+  },
+  deliveredNoticeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  deliveredNoticeTitle: {
+    fontSize: 14.5,
+    fontWeight: '700',
+    color: '#047857',
+  },
+  deliveredNoticeDesc: {
+    fontSize: 12.5,
+    color: '#065F46',
+    lineHeight: 18,
+  },
+  cancelledNoticeBox: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: '#FECACA',
+    marginBottom: 16,
+  },
+  cancelledNoticeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  cancelledNoticeTitle: {
+    fontSize: 14.5,
+    fontWeight: '700',
+    color: '#B91C1C',
+  },
+  cancelledNoticeDesc: {
+    fontSize: 12.5,
+    color: '#991B1B',
+    lineHeight: 18,
   },
 });

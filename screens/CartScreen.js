@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Header from '../components/Header';
 import ProfileIncompleteModal from '../components/ProfileIncompleteModal';
+import CheckoutModal from '../components/CheckoutModal';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -37,6 +38,11 @@ export default function CartScreen({ navigation }) {
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [profileCompletionPct, setProfileCompletionPct] = useState(0);
   const [missingFields, setMissingFields] = useState([]);
+  const [isProfileUnderReview, setIsProfileUnderReview] = useState(false);
+  const [profileModalMessage, setProfileModalMessage] = useState('');
+
+  // Checkout Modal State
+  const [checkoutVisible, setCheckoutVisible] = useState(false);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -50,10 +56,10 @@ export default function CartScreen({ navigation }) {
       return;
     }
 
-    // Check profile completion (100% required)
+    // Check profile completion (100% required & active required)
     const isProfileComplete =
       user?.is_profile_completed === true ||
-      Number(user?.profile_completion_percentage) === 100;
+      Number(user?.profile_completion_percentage) >= 100;
 
     if (
       user &&
@@ -63,25 +69,24 @@ export default function CartScreen({ navigation }) {
     ) {
       setProfileCompletionPct(Number(user.profile_completion_percentage) || 0);
       setMissingFields(user.missing_fields || []);
+      setIsProfileUnderReview(false);
+      setProfileModalMessage('');
       setProfileModalVisible(true);
       return;
     }
 
-    Alert.alert(
-      'Checkout',
-      `Proceed to checkout with ${getCartCount()} items (Total: ₹${getCartTotal().toLocaleString('en-IN')})?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Proceed',
-          onPress: async () => {
-            await clearCart();
-            Alert.alert('Order Placed', 'Your order has been placed successfully!');
-            navigation.navigate('Home');
-          },
-        },
-      ]
-    );
+    if (user && isProfileComplete && user.is_profile_active === false) {
+      setProfileCompletionPct(100);
+      setMissingFields([]);
+      setIsProfileUnderReview(true);
+      setProfileModalMessage(
+        'Your profile is 100% complete and submitted for review. Please wait for admin to activate your profile before adding items to cart or purchasing products.'
+      );
+      setProfileModalVisible(true);
+      return;
+    }
+
+    setCheckoutVisible(true);
   };
 
   const handleUpdateQty = async (productId, newQty) => {
@@ -316,15 +321,27 @@ export default function CartScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
+      {/* Checkout Modal */}
+      <CheckoutModal
+        visible={checkoutVisible}
+        onClose={() => setCheckoutVisible(false)}
+        navigation={navigation}
+        items={cartItems}
+        totalAmount={finalTotal}
+        isBuyNow={false}
+      />
+
       {/* Profile Incomplete Modal Alert */}
       <ProfileIncompleteModal
         visible={profileModalVisible}
         percentage={profileCompletionPct}
         missingFields={missingFields}
+        isUnderReview={isProfileUnderReview}
+        message={profileModalMessage}
         onClose={() => setProfileModalVisible(false)}
         onComplete={() => {
           setProfileModalVisible(false);
-          navigation.navigate('Profile');
+          navigation.navigate('EditProfile');
         }}
       />
     </SafeAreaView>

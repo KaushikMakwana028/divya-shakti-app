@@ -10,6 +10,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import orderService from '../services/orderService';
 
@@ -53,9 +54,11 @@ export default function OrdersScreen({ navigation }) {
     }
   }, []);
 
-  useEffect(() => {
-    fetchOrders(1);
-  }, [fetchOrders]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchOrders(1);
+    }, [fetchOrders])
+  );
 
   const onRefresh = () => {
     fetchOrders(1, true);
@@ -67,16 +70,22 @@ export default function OrdersScreen({ navigation }) {
     }
   };
 
-  const getStatusConfig = (status) => {
+  const getStatusConfig = (status, isPaid = false) => {
     switch (status?.toLowerCase()) {
       case 'completed':
       case 'delivered':
-        return { label: 'Completed', color: '#27A462', bg: '#E8F5E9', icon: 'checkmark-circle' };
+        return { label: 'Delivered', color: '#27A462', bg: '#E8F5E9', icon: 'checkmark-circle' };
+      case 'out_for_delivery':
+        return { label: 'Out for Delivery', color: '#EA580C', bg: '#FFF7ED', icon: 'bicycle' };
+      case 'packed':
+        return { label: 'Packed', color: '#8B5CF6', bg: '#F5F3FF', icon: 'cube' };
       case 'processing':
       case 'confirmed':
-        return { label: 'Processing', color: '#3B82F6', bg: '#EFF6FF', icon: 'sync' };
-      case 'shipped':
-        return { label: 'Shipped', color: '#8B5CF6', bg: '#F5F3FF', icon: 'cube' };
+        return { label: 'Confirmed', color: '#3B82F6', bg: '#EFF6FF', icon: 'sync' };
+      case 'placed':
+        return isPaid
+          ? { label: 'Order Placed', color: '#3B82F6', bg: '#EFF6FF', icon: 'checkmark-circle' }
+          : { label: 'Payment Pending', color: '#F59E0B', bg: '#FEF3C7', icon: 'time' };
       case 'cancelled':
         return { label: 'Cancelled', color: '#EF4444', bg: '#FEF2F2', icon: 'close-circle' };
       default:
@@ -101,7 +110,7 @@ export default function OrdersScreen({ navigation }) {
   };
 
   const renderOrderItem = ({ item }) => {
-    const statusCfg = getStatusConfig(item.status);
+    const statusCfg = getStatusConfig(item.status, item.is_paid);
 
     return (
       <TouchableOpacity
