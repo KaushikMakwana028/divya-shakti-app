@@ -403,7 +403,7 @@ export default function AddressScreen({ navigation }) {
       >
         <KeyboardAvoidingView
           style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <View style={styles.modalSheet}>
             {/* Modal Header */}
@@ -424,7 +424,7 @@ export default function AddressScreen({ navigation }) {
             <ScrollView
               style={styles.modalBody}
               contentContainerStyle={styles.modalBodyContent}
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator={true}
               keyboardShouldPersistTaps="handled"
             >
               {/* Full Name */}
@@ -900,7 +900,7 @@ const styles = StyleSheet.create({
   },
   modalBodyContent: {
     paddingVertical: 16,
-    paddingBottom: 40,
+    paddingBottom: 180,
     gap: 14,
   },
   inputGroup: {

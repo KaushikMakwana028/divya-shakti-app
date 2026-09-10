@@ -7,13 +7,20 @@ const STORAGE_KEYS = {
 };
 
 class StorageService {
-    // Save token
+    // Save token securely on-device
     async saveToken(token) {
         try {
-            await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, token);
+            // Primary: SecureStore (hardware-backed EncryptedSharedPreferences on Android, Keychain on iOS)
+            let secureSaved = false;
             try {
                 await SecureStore.setItemAsync(STORAGE_KEYS.TOKEN, token);
-            } catch (_) {}
+                secureSaved = true;
+            } catch (secErr) {
+                console.warn('SecureStore saveToken fallback to AsyncStorage:', secErr.message);
+            }
+
+            // Also keep in AsyncStorage for web or environments where SecureStore isn't available
+            await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, token);
             return true;
         } catch (error) {
             console.error('Error saving token:', error);
@@ -21,14 +28,18 @@ class StorageService {
         }
     }
 
-    // Get token
+    // Get token (auto-load from SecureStore first, then AsyncStorage)
     async getToken() {
         try {
-            let token = await AsyncStorage.getItem(STORAGE_KEYS.TOKEN);
+            let token = null;
+            try {
+                token = await SecureStore.getItemAsync(STORAGE_KEYS.TOKEN);
+            } catch (secErr) {
+                // SecureStore unavailable, fallback
+            }
+
             if (!token) {
-                try {
-                    token = await SecureStore.getItemAsync(STORAGE_KEYS.TOKEN);
-                } catch (_) {}
+                token = await AsyncStorage.getItem(STORAGE_KEYS.TOKEN);
             }
             return token;
         } catch (error) {
@@ -62,22 +73,27 @@ class StorageService {
         }
     }
 
-    // Clear all auth data (logout)
+    // Clear all auth data (logout / 401 expiration)
     async clearAuthData() {
         try {
-            await AsyncStorage.removeItem(STORAGE_KEYS.TOKEN);
-            await AsyncStorage.removeItem(STORAGE_KEYS.USER);
             try {
                 await SecureStore.deleteItemAsync(STORAGE_KEYS.TOKEN);
             } catch (_) {}
             try {
                 await SecureStore.deleteItemAsync(STORAGE_KEYS.USER);
             } catch (_) {}
+            await AsyncStorage.removeItem(STORAGE_KEYS.TOKEN);
+            await AsyncStorage.removeItem(STORAGE_KEYS.USER);
             return true;
         } catch (error) {
             console.error('Error clearing auth data:', error);
             return false;
         }
+    }
+
+    // Alias for clearAuthData
+    async clearAll() {
+        return await this.clearAuthData();
     }
 
     // Check if user is logged in

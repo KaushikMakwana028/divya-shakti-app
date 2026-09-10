@@ -199,6 +199,7 @@ export default function HomeScreen({ navigation }) {
     },
   };
   const statusMeta = STATUS_META[statusLabel] || STATUS_META.Incomplete;
+  const isVerifiedAndActive = statusLabel === "Verified & Active";
 
   // Financial / Wallet Metrics
   const walletData = dashboardData?.wallet || {};
@@ -401,158 +402,166 @@ export default function HomeScreen({ navigation }) {
           </TouchableOpacity>
         )}
 
-        {/* ── Profile Progression Bar & Verification Status Card ── */}
-        <View style={styles.progressionCard}>
-          {/* Header Row — icon + title/subtitle only. No overlap risk since the
-              status pill now lives on its own row below, never competing for
-              horizontal space with a long title. */}
-          <View style={styles.progressionHeaderRow}>
+        {/* ── Profile Progression Card ──
+            Only shown while the profile is NOT fully verified & active.
+            Once verified, this entire card disappears and is replaced by a
+            single compact pill inside the dark wallet balance card below —
+            no need for a full card just to say "you're verified". */}
+        {!isVerifiedAndActive && (
+          <View style={styles.progressionCard}>
+            <View style={styles.progressionHeaderRow}>
+              <View
+                style={[
+                  styles.progressionIconBox,
+                  { backgroundColor: statusMeta.iconBg },
+                ]}
+              >
+                <Ionicons
+                  name={statusMeta.icon}
+                  size={20}
+                  color={statusMeta.iconColor}
+                />
+              </View>
+              <View style={styles.progressionHeaderTextCol}>
+                <Text style={styles.progressionCardTitle} numberOfLines={1}>
+                  Account Verification
+                </Text>
+                <Text style={styles.progressionCardSub}>
+                  {completedCount}/{totalFields} Profile Details
+                </Text>
+              </View>
+            </View>
+
             <View
               style={[
-                styles.progressionIconBox,
-                { backgroundColor: statusMeta.iconBg },
+                styles.progressionStatusPill,
+                {
+                  backgroundColor: statusMeta.pillBg,
+                  borderColor: statusMeta.pillBorder,
+                },
               ]}
             >
               <Ionicons
-                name={statusMeta.icon}
-                size={20}
-                color={statusMeta.iconColor}
+                name={statusMeta.badgeIcon}
+                size={13}
+                color={statusMeta.pillText}
               />
-            </View>
-            <View style={styles.progressionHeaderTextCol}>
-              <Text style={styles.progressionCardTitle} numberOfLines={1}>
-                Account Verification
-              </Text>
-              <Text style={styles.progressionCardSub}>
-                {completedCount}/{totalFields} Profile Details
-              </Text>
-            </View>
-          </View>
-
-          {/* Status Pill — its own full-width row now, left aligned, so it
-              never crowds or clips the title above it */}
-          <View
-            style={[
-              styles.progressionStatusPill,
-              {
-                backgroundColor: statusMeta.pillBg,
-                borderColor: statusMeta.pillBorder,
-              },
-            ]}
-          >
-            <Ionicons
-              name={statusMeta.badgeIcon}
-              size={13}
-              color={statusMeta.pillText}
-            />
-            <Text
-              style={[
-                styles.progressionStatusPillText,
-                { color: statusMeta.pillText },
-              ]}
-            >
-              {statusLabel}
-            </Text>
-          </View>
-
-          {/* Progress Bar & Percentage */}
-          <View style={styles.progressBarSection}>
-            <View style={styles.progressBarInfoRow}>
-              <Text style={styles.progressPercentLabel}>
-                Profile Completion
-              </Text>
               <Text
-                style={[styles.progressPercentValue, { color: progressColor }]}
+                style={[
+                  styles.progressionStatusPillText,
+                  { color: statusMeta.pillText },
+                ]}
               >
-                {percentage}%
+                {statusLabel}
               </Text>
             </View>
-            <View style={styles.progressBarTrack}>
-              <View
-                style={[
-                  styles.progressBarFill,
-                  {
-                    width: `${Math.max(6, Math.min(100, percentage))}%`,
-                    backgroundColor: progressColor,
-                  },
-                ]}
-              />
-            </View>
-          </View>
 
-          {/* Message Banner */}
-          <Text style={styles.progressionMessage}>{progressMessage}</Text>
-
-          {/* Missing Details Pills (if incomplete) */}
-          {!isCompleted && missingDetails.length > 0 && (
-            <View style={styles.missingPillsRow}>
-              {missingDetails.slice(0, 3).map((item, idx) => (
-                <View key={idx} style={styles.missingPill}>
-                  <Ionicons name="ellipse" size={6} color="#B45309" />
-                  <Text style={styles.missingPillText} numberOfLines={1}>
-                    {item.label || item.field}
-                  </Text>
-                </View>
-              ))}
-              {missingDetails.length > 3 && (
-                <View style={styles.missingPillMore}>
-                  <Text style={styles.missingPillMoreText}>
-                    +{missingDetails.length - 3} more
-                  </Text>
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* Action CTA */}
-          <View style={styles.progressionActionRow}>
-            {statusLabel === "Verified & Active" ? (
-              <View style={styles.verifiedNoticeRow}>
-                <Ionicons
-                  name="checkmark-done-circle"
-                  size={16}
-                  color="#27A462"
-                />
-                <Text style={styles.verifiedNoticeText}>
-                  Shopping, Cart & MLM rewards fully activated
+            {/* Progress Bar & Percentage */}
+            <View style={styles.progressBarSection}>
+              <View style={styles.progressBarInfoRow}>
+                <Text style={styles.progressPercentLabel}>
+                  Profile Completion
+                </Text>
+                <Text
+                  style={[
+                    styles.progressPercentValue,
+                    { color: progressColor },
+                  ]}
+                >
+                  {percentage}%
                 </Text>
               </View>
-            ) : statusLabel === "Pending Admin Approval" ? (
-              <TouchableOpacity
-                style={styles.reviewBtn}
-                activeOpacity={0.8}
-                onPress={() => navigation.navigate("EditProfile")}
-              >
-                <Ionicons name="eye-outline" size={16} color="#D97706" />
-                <Text style={styles.reviewBtnText}>Review Profile Details</Text>
-                <Ionicons name="chevron-forward" size={14} color="#D97706" />
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={styles.completeProfileBtn}
-                activeOpacity={0.85}
-                onPress={() => navigation.navigate("EditProfile")}
-              >
-                <Text style={styles.completeProfileBtnText}>
-                  Complete Profile ({100 - percentage}% remaining)
-                </Text>
-                <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
-              </TouchableOpacity>
+              <View style={styles.progressBarTrack}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    {
+                      width: `${Math.max(6, Math.min(100, percentage))}%`,
+                      backgroundColor: progressColor,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+
+            {/* Message Banner */}
+            <Text style={styles.progressionMessage}>{progressMessage}</Text>
+
+            {/* Missing Details Pills (if incomplete) */}
+            {!isCompleted && missingDetails.length > 0 && (
+              <View style={styles.missingPillsRow}>
+                {missingDetails.slice(0, 3).map((item, idx) => (
+                  <View key={idx} style={styles.missingPill}>
+                    <Ionicons name="ellipse" size={6} color="#B45309" />
+                    <Text style={styles.missingPillText} numberOfLines={1}>
+                      {item.label || item.field}
+                    </Text>
+                  </View>
+                ))}
+                {missingDetails.length > 3 && (
+                  <View style={styles.missingPillMore}>
+                    <Text style={styles.missingPillMoreText}>
+                      +{missingDetails.length - 3} more
+                    </Text>
+                  </View>
+                )}
+              </View>
             )}
+
+            {/* Action CTA */}
+            <View style={styles.progressionActionRow}>
+              {statusLabel === "Pending Admin Approval" ? (
+                <TouchableOpacity
+                  style={styles.reviewBtn}
+                  activeOpacity={0.8}
+                  onPress={() => navigation.navigate("EditProfile")}
+                >
+                  <Ionicons name="eye-outline" size={16} color="#D97706" />
+                  <Text style={styles.reviewBtnText}>
+                    Review Profile Details
+                  </Text>
+                  <Ionicons name="chevron-forward" size={14} color="#D97706" />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.completeProfileBtn}
+                  activeOpacity={0.85}
+                  onPress={() => navigation.navigate("EditProfile")}
+                >
+                  <Text style={styles.completeProfileBtnText}>
+                    Complete Profile ({100 - percentage}% remaining)
+                  </Text>
+                  <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* ── Balance & Wallet Banner ── */}
         <View style={styles.banner}>
-          {/* Decorative circles (moved above content so they stay strictly behind it) */}
+          {/* Decorative circles (kept behind content) */}
           <View style={styles.bannerDecorCircle1} pointerEvents="none" />
           <View style={styles.bannerDecorCircle2} pointerEvents="none" />
 
-          <View style={styles.offerTag}>
-            <Ionicons name="star" size={11} color="#C89738" />
-            <Text style={styles.offerTagText}>
-              {referralCode ? `Ref: ${referralCode}` : "Active Member"}
-            </Text>
+          {/* Tag row: referral tag + (only when verified) a single compact
+              "Verified & Active" pill, styled to sit on the dark card. */}
+          <View style={styles.bannerTagRow}>
+            <View style={styles.offerTag}>
+              <Ionicons name="star" size={11} color="#C89738" />
+              <Text style={styles.offerTagText}>
+                {referralCode ? `Ref: ${referralCode}` : "Active Member"}
+              </Text>
+            </View>
+
+            {isVerifiedAndActive && (
+              <View style={styles.bannerVerifiedPill}>
+                <Ionicons name="checkmark-circle" size={12} color="#6EE7B7" />
+                <Text style={styles.bannerVerifiedPillText}>
+                  Verified & Active
+                </Text>
+              </View>
+            )}
           </View>
 
           <Text style={styles.bannerLabel}>Total Wallet Balance</Text>
@@ -595,13 +604,11 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* ── Financial Metrics Breakdown ── */}
+        {/* ── Financial Metrics Breakdown ──
+            Plain (non-interactive) info cards — these are read-only stats,
+            not navigable buttons. */}
         <View style={styles.metricsGrid}>
-          <TouchableOpacity
-            style={styles.metricCard}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate("Wallet")}
-          >
+          <View style={styles.metricCard}>
             <View
               style={[styles.metricIconBox, { backgroundColor: "#FFF0F4" }]}
             >
@@ -611,13 +618,9 @@ export default function HomeScreen({ navigation }) {
               ₹{totalRevenue.toLocaleString("en-IN")}
             </Text>
             <Text style={styles.metricLabel}>Total Revenue</Text>
-          </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity
-            style={styles.metricCard}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate("Wallet")}
-          >
+          <View style={styles.metricCard}>
             <View
               style={[styles.metricIconBox, { backgroundColor: "#FBF5E6" }]}
             >
@@ -627,13 +630,9 @@ export default function HomeScreen({ navigation }) {
               ₹{todayRevenue.toLocaleString("en-IN")}
             </Text>
             <Text style={styles.metricLabel}>Today's Earnings</Text>
-          </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity
-            style={styles.metricCard}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate("Wallet")}
-          >
+          <View style={styles.metricCard}>
             <View
               style={[styles.metricIconBox, { backgroundColor: "#F5F0FB" }]}
             >
@@ -643,13 +642,9 @@ export default function HomeScreen({ navigation }) {
               ₹{thisMonthRevenue.toLocaleString("en-IN")}
             </Text>
             <Text style={styles.metricLabel}>This Month</Text>
-          </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity
-            style={styles.metricCard}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate("Wallet")}
-          >
+          <View style={styles.metricCard}>
             <View
               style={[styles.metricIconBox, { backgroundColor: "#EEF5FF" }]}
             >
@@ -659,7 +654,7 @@ export default function HomeScreen({ navigation }) {
               ₹{totalSpent.toLocaleString("en-IN")}
             </Text>
             <Text style={styles.metricLabel}>Total Spent</Text>
-          </TouchableOpacity>
+          </View>
         </View>
 
         {/* ── Quick Actions ── */}
@@ -1130,10 +1125,7 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
 
-  /* ── Profile Progression Card ──
-     Rebuilt so the status pill sits on its own row directly under the
-     title/subtitle instead of beside it — this is what caused the
-     "Account Verificati…" text to be clipped behind the green pill. */
+  /* ── Profile Progression Card (incomplete / pending states only) ── */
   progressionCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 22,
@@ -1261,20 +1253,6 @@ const styles = StyleSheet.create({
   progressionActionRow: {
     marginTop: 2,
   },
-  verifiedNoticeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "#E8F8F0",
-    padding: 12,
-    borderRadius: 12,
-  },
-  verifiedNoticeText: {
-    fontFamily: "Poppins_500Medium",
-    fontSize: 11.5,
-    color: "#27A462",
-    flex: 1,
-  },
   reviewBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1325,6 +1303,13 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 10,
   },
+  bannerTagRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
   offerTag: {
     flexDirection: "row",
     alignItems: "center",
@@ -1334,7 +1319,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 20,
-    marginBottom: 12,
     borderWidth: 1,
     borderColor: "rgba(200,151,56,0.3)",
   },
@@ -1342,6 +1326,23 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins_600SemiBold",
     fontSize: 11,
     color: "#C89738",
+  },
+  bannerVerifiedPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(39,164,98,0.18)",
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(110,231,183,0.35)",
+  },
+  bannerVerifiedPillText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 11,
+    color: "#6EE7B7",
   },
   bannerLabel: {
     fontFamily: "Poppins_400Regular",
@@ -1425,7 +1426,7 @@ const styles = StyleSheet.create({
     right: 60,
   },
 
-  /* ── Financial Metrics Grid ── */
+  /* ── Financial Metrics Grid (non-interactive cards) ── */
   metricsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",

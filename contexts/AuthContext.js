@@ -8,6 +8,7 @@ import React, {
 import authService from '../services/authService';
 import profileService from '../services/profileService';
 import storageService from '../services/storageService';
+import { setUnauthorizedHandler } from '../services/apiClient';
 
 const AuthContext = createContext();
 
@@ -63,6 +64,10 @@ export const AuthProvider = ({ children }) => {
     // On App Load
     // ─────────────────────────────────────────
     useEffect(() => {
+        setUnauthorizedHandler(() => {
+            setIsAuthenticated(false);
+            setUser(null);
+        });
         checkAuthStatus();
     }, [checkAuthStatus]);
 

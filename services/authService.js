@@ -1,5 +1,4 @@
-import axios from 'axios';
-import API_CONFIG from '../config/api';
+import apiClient from './apiClient';
 import storageService from './storageService';
 
 const AUTH_ENDPOINTS = {
@@ -18,39 +17,7 @@ const USER_ENDPOINTS = {
 
 class AuthService {
     constructor() {
-        this.api = axios.create({
-            baseURL: API_CONFIG.BASE_URL,
-            timeout: API_CONFIG.TIMEOUT,
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        });
-
-        this.api.interceptors.request.use(
-            async (config) => {
-                const token = await storageService.getToken();
-                if (token) {
-                    config.headers.Authorization = `Bearer ${token}`;
-                }
-                console.log(
-                    'API Request:',
-                    config.method?.toUpperCase(),
-                    config.baseURL + config.url
-                );
-                return config;
-            },
-            (error) => Promise.reject(error)
-        );
-
-        this.api.interceptors.response.use(
-            (response) => response,
-            (error) => {
-                if (error.response?.status === 401) {
-                    storageService.clearAuthData();
-                }
-                return Promise.reject(error);
-            }
-        );
+        this.api = apiClient;
     }
 
     // ═════════════════════════════════════════

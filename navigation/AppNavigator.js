@@ -4,6 +4,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useAuth } from "../contexts/AuthContext";
+import { navigationRef } from "./navigationRef";
 
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
@@ -16,12 +17,15 @@ import EditProfileScreen from "../screens/EditProfileScreen";
 import MemberDetailsScreen from "../screens/MemberDetailsScreen";
 import ProductDetailsScreen from "../screens/ProductDetailsScreen"; // NEW
 import CartScreen from "../screens/CartScreen"; // NEW
+import CheckoutReviewScreen from "../screens/CheckoutReviewScreen";
+import OrderPlacedScreen from "../screens/OrderPlacedScreen";
 import WalletScreen from "../screens/WalletScreen";
 import AddressScreen from "../screens/AddressScreen";
 import OrdersScreen from "../screens/OrdersScreen";
 import OrderDetailsScreen from "../screens/OrderDetailsScreen";
 import CmsScreen from "../screens/CmsScreen";
 import DeleteAccountScreen from "../screens/DeleteAccountScreen";
+import AboutUsScreen from "../screens/AboutUsScreen";
 import BottomBar from "../components/BottomBar";
 
 const Stack = createNativeStackNavigator();
@@ -62,7 +66,7 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator
         initialRouteName={isAuthenticated ? "Main" : "Login"}
         screenOptions={{ headerShown: false, animation: "fade" }}
@@ -85,6 +89,16 @@ export default function AppNavigator() {
           name="Cart"
           component={CartScreen}
           options={{ animation: "slide_from_bottom" }}
+        />
+        <Stack.Screen
+          name="CheckoutReview"
+          component={CheckoutReviewScreen}
+          options={{ animation: "slide_from_right" }}
+        />
+        <Stack.Screen
+          name="OrderPlaced"
+          component={OrderPlacedScreen}
+          options={{ animation: "fade" }}
         />
         <Stack.Screen
           name="Shop"
@@ -126,6 +140,11 @@ export default function AppNavigator() {
           name="PrivacyPolicy"
           component={CmsScreen}
           initialParams={{ type: 'privacy' }}
+          options={{ animation: "slide_from_right" }}
+        />
+        <Stack.Screen
+          name="AboutUs"
+          component={AboutUsScreen}
           options={{ animation: "slide_from_right" }}
         />
         <Stack.Screen

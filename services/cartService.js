@@ -1,27 +1,9 @@
-import axios from 'axios';
-import API_CONFIG from '../config/api';
+import apiClient from './apiClient';
 import storageService from './storageService';
 
 class CartService {
     constructor() {
-        this.api = axios.create({
-            baseURL: API_CONFIG.BASE_URL,
-            timeout: API_CONFIG.TIMEOUT,
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        });
-
-        this.api.interceptors.request.use(
-            async (config) => {
-                const token = await storageService.getToken();
-                if (token) {
-                    config.headers.Authorization = `Bearer ${token}`;
-                }
-                return config;
-            },
-            (error) => Promise.reject(error)
-        );
+        this.api = apiClient;
     }
 
     // ─────────────────────────────────────────

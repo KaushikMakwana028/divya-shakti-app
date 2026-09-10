@@ -13,6 +13,9 @@ import {
   RefreshControl,
   KeyboardAvoidingView,
   Platform,
+  Linking,
+  Dimensions,
+  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,7 +23,38 @@ import * as ImagePicker from "expo-image-picker";
 import walletService from "../services/walletService";
 import { useAuth } from "../contexts/AuthContext";
 
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const SHEET_MAX_HEIGHT = Math.min(Math.round(SCREEN_HEIGHT * 0.88), 750);
+
 const PRESET_AMOUNTS = [500, 1000, 2000, 5000];
+
+// ─────────────────────────────────────────
+// Small reusable row for the details sheet.
+// Label has a fixed width and the value is
+// allowed to flex + wrap onto multiple lines,
+// so long values (like admin notes) never sit
+// on top of the label again.
+// ─────────────────────────────────────────
+function DetailRow({ icon, label, value, valueColor, bold, last }) {
+  if (value === null || value === undefined || value === "") return null;
+  return (
+    <View style={[styles.detailsInfoRow, last && styles.detailsInfoRowLast]}>
+      <View style={styles.detailsInfoRowLeft}>
+        {icon ? <Ionicons name={icon} size={14} color="#9E8E93" /> : null}
+        <Text style={styles.detailsInfoLabel}>{label}</Text>
+      </View>
+      <Text
+        style={[
+          styles.detailsInfoValue,
+          valueColor && { color: valueColor },
+          bold && { fontFamily: "Poppins_700Bold" },
+        ]}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
 
 export default function WalletScreen({ navigation }) {
   const { user } = useAuth();
@@ -33,13 +67,28 @@ export default function WalletScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Deposit Request Modal State
+  // Deposit Request Modal State (Add Money)
   const [depositModalVisible, setDepositModalVisible] = useState(false);
   const [depositAmount, setDepositAmount] = useState("1000");
   const [paymentMethod, setPaymentMethod] = useState("cash"); // 'cash' | 'online'
   const [depositRemark, setDepositRemark] = useState("");
   const [proofFile, setProofFile] = useState(null);
   const [submittingDeposit, setSubmittingDeposit] = useState(false);
+
+  // Deposit Request Details Bottom Sheet (Slider) State
+  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  const [selectedDepositRequest, setSelectedDepositRequest] = useState(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
+  // Receipt image loading / error state (for the thumb inside the sheet)
+  const [receiptImgLoading, setReceiptImgLoading] = useState(true);
+  const [receiptImgError, setReceiptImgError] = useState(false);
+
+  // Fullscreen Receipt Preview State
+  const [previewImageVisible, setPreviewImageVisible] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState(null);
+  const [previewImgLoading, setPreviewImgLoading] = useState(true);
+  const [previewImgError, setPreviewImgError] = useState(false);
 
   // Image Picker Modal
   const [pickerModalVisible, setPickerModalVisible] = useState(false);
@@ -183,6 +232,42 @@ export default function WalletScreen({ navigation }) {
     }
   };
 
+  // Resolve the best available proof URL from whatever shape the API gives back
+  const getProofUrl = (req) => {
+    if (!req) return null;
+    return req.proof_image || req.proof_file_url || req.proof_file || null;
+  };
+
+  // ─────────────────────────────────────────
+  // Open Deposit Request Details (Slider Modal)
+  // ─────────────────────────────────────────
+  const handleOpenDepositDetails = async (req) => {
+    setSelectedDepositRequest(req);
+    setDetailsModalVisible(true);
+    setLoadingDetails(true);
+    setReceiptImgLoading(true);
+    setReceiptImgError(false);
+
+    try {
+      const res = await walletService.getDepositRequestDetails(req.id);
+      if (res.success && res.request) {
+        setSelectedDepositRequest(res.request);
+      }
+    } catch (err) {
+      console.error("Fetch deposit details error:", err);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  const openFullscreenPreview = (url) => {
+    if (!url) return;
+    setPreviewImageUrl(url);
+    setPreviewImgLoading(true);
+    setPreviewImgError(false);
+    setPreviewImageVisible(true);
+  };
+
   // Format Helper for Source
   const formatSource = (source) => {
     if (!source) return "Transaction";
@@ -226,6 +311,8 @@ export default function WalletScreen({ navigation }) {
       </SafeAreaView>
     );
   }
+
+  const proofUrl = getProofUrl(selectedDepositRequest);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -521,9 +608,15 @@ export default function WalletScreen({ navigation }) {
                 const isApproved = req.status === "approved";
                 const isPending = req.status === "pending";
                 const isRejected = req.status === "rejected";
+                const thumbUrl = getProofUrl(req);
 
                 return (
-                  <View key={req.id} style={styles.depositCard}>
+                  <TouchableOpacity
+                    key={req.id}
+                    style={styles.depositCard}
+                    activeOpacity={0.75}
+                    onPress={() => handleOpenDepositDetails(req)}
+                  >
                     <View
                       style={[
                         styles.depositAccentBar,
@@ -546,9 +639,10 @@ export default function WalletScreen({ navigation }) {
                           />
                         </View>
                         <Text style={styles.depositMethodText}>
-                          {req.payment_method === "online"
-                            ? "Online Payment"
-                            : "Cash Deposit"}
+                          {req.payment_method_label ||
+                            (req.payment_method === "online"
+                              ? "Online Transfer"
+                              : "Cash Deposit")}
                         </Text>
                       </View>
 
@@ -586,11 +680,12 @@ export default function WalletScreen({ navigation }) {
                             isRejected && styles.statusRejectedText,
                           ]}
                         >
-                          {isApproved
-                            ? "Approved"
-                            : isPending
-                              ? "Pending"
-                              : "Rejected"}
+                          {req.status_label ||
+                            (isApproved
+                              ? "Approved"
+                              : isPending
+                                ? "Pending"
+                                : "Rejected")}
                         </Text>
                       </View>
                     </View>
@@ -603,23 +698,31 @@ export default function WalletScreen({ navigation }) {
                           Requested Amount
                         </Text>
                         <Text style={styles.depositAmountValue}>
-                          ₹ {req.amount.toLocaleString("en-IN")}
+                          {req.formatted_amount ||
+                            `₹ ${Number(req.amount).toLocaleString("en-IN")}`}
                         </Text>
                       </View>
 
-                      {req.proof_file ? (
+                      {thumbUrl ? (
                         <View style={styles.proofThumbWrap}>
                           <Image
-                            source={{ uri: req.proof_file }}
+                            source={{ uri: thumbUrl }}
                             style={styles.proofThumb}
                             resizeMode="cover"
                           />
+                          <View style={styles.proofThumbBadge}>
+                            <Ionicons
+                              name="receipt-outline"
+                              size={10}
+                              color="#FFFFFF"
+                            />
+                          </View>
                         </View>
                       ) : null}
                     </View>
 
                     {req.remark ? (
-                      <Text style={styles.depositRemark}>
+                      <Text style={styles.depositRemark} numberOfLines={3}>
                         <Text style={{ fontFamily: "Poppins_600SemiBold" }}>
                           Note:{" "}
                         </Text>
@@ -627,17 +730,28 @@ export default function WalletScreen({ navigation }) {
                       </Text>
                     ) : null}
 
-                    <View style={styles.depositDateRow}>
-                      <Ionicons
-                        name="calendar-outline"
-                        size={11}
-                        color="#C5B8BD"
-                      />
-                      <Text style={styles.depositDate}>
-                        {formatDate(req.created_at)}
-                      </Text>
+                    <View style={styles.depositCardFooter}>
+                      <View style={styles.depositDateRow}>
+                        <Ionicons
+                          name="calendar-outline"
+                          size={11}
+                          color="#C5B8BD"
+                        />
+                        <Text style={styles.depositDate}>
+                          {req.formatted_created_at ||
+                            formatDate(req.created_at)}
+                        </Text>
+                      </View>
+                      <View style={styles.viewDetailsRow}>
+                        <Text style={styles.viewDetailsText}>View Details</Text>
+                        <Ionicons
+                          name="chevron-forward"
+                          size={13}
+                          color="#E64A78"
+                        />
+                      </View>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 );
               })
             )}
@@ -870,11 +984,12 @@ export default function WalletScreen({ navigation }) {
         animationType="fade"
         onRequestClose={() => setPickerModalVisible(false)}
       >
-        <TouchableOpacity
-          style={styles.pickerOverlay}
-          activeOpacity={1}
-          onPress={() => setPickerModalVisible(false)}
-        >
+        <View style={styles.pickerOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setPickerModalVisible(false)}
+          />
           <View style={styles.pickerSheet}>
             <View style={styles.modalIndicator} />
             <Text style={styles.pickerTitle}>Attach Payment Proof</Text>
@@ -936,7 +1051,518 @@ export default function WalletScreen({ navigation }) {
               <Text style={styles.pickerCancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* ── Modal: Deposit Request Details Slider (Bottom Sheet) ── */}
+      <Modal
+        visible={detailsModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDetailsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          {/* Top backdrop Pressable sits above the sheet and handles backdrop dismiss without any touch overlap */}
+          <Pressable
+            style={styles.modalBackdropTop}
+            onPress={() => setDetailsModalVisible(false)}
+          />
+
+          <View style={styles.detailsModalSheet}>
+            {/* Pinned Header at top of the sheet */}
+            <View style={styles.detailsHeaderWrap}>
+              <View style={styles.modalIndicator} />
+              <View style={styles.modalHeaderRow}>
+                <View style={styles.detailsHeaderLeft}>
+                  <Text style={styles.modalTitle}>Deposit Details</Text>
+                  {selectedDepositRequest?.id ? (
+                    <View style={styles.detailsIdBadge}>
+                      <Text style={styles.detailsIdBadgeText}>
+                        #REQ-{selectedDepositRequest.id}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+                <TouchableOpacity
+                  style={styles.detailsCloseBtn}
+                  onPress={() => setDetailsModalVisible(false)}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <Ionicons name="close" size={20} color="#2A1E24" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {loadingDetails && !selectedDepositRequest ? (
+              <View style={styles.detailsLoaderBox}>
+                <ActivityIndicator size="large" color="#E64A78" />
+                <Text style={styles.detailsLoaderText}>
+                  Loading deposit details...
+                </Text>
+              </View>
+            ) : selectedDepositRequest ? (
+              <ScrollView
+                style={styles.detailsScroll}
+                contentContainerStyle={styles.detailsScrollContent}
+                showsVerticalScrollIndicator={true}
+                nestedScrollEnabled={true}
+                keyboardShouldPersistTaps="handled"
+                bounces={true}
+                overScrollMode="always"
+                scrollEventThrottle={16}
+              >
+                {/* 1. Hero Summary Card (Amount + Status) */}
+                <View style={styles.detailsHeroCard}>
+                  <View style={styles.detailsHeroTop}>
+                    <Text style={styles.detailsHeroLabel}>
+                      Requested Amount
+                    </Text>
+                    {/* Status Badge */}
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        selectedDepositRequest.status === "approved" &&
+                          styles.statusApproved,
+                        selectedDepositRequest.status === "pending" &&
+                          styles.statusPending,
+                        selectedDepositRequest.status === "rejected" &&
+                          styles.statusRejected,
+                      ]}
+                    >
+                      <Ionicons
+                        name={
+                          selectedDepositRequest.status === "approved"
+                            ? "checkmark-circle"
+                            : selectedDepositRequest.status === "pending"
+                              ? "time-outline"
+                              : "close-circle"
+                        }
+                        size={13}
+                        color={
+                          selectedDepositRequest.status === "approved"
+                            ? "#27A462"
+                            : selectedDepositRequest.status === "pending"
+                              ? "#C89738"
+                              : "#EF4444"
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.statusBadgeText,
+                          selectedDepositRequest.status === "approved" &&
+                            styles.statusApprovedText,
+                          selectedDepositRequest.status === "pending" &&
+                            styles.statusPendingText,
+                          selectedDepositRequest.status === "rejected" &&
+                            styles.statusRejectedText,
+                        ]}
+                      >
+                        {selectedDepositRequest.status_label ||
+                          (selectedDepositRequest.status === "approved"
+                            ? "Approved"
+                            : selectedDepositRequest.status === "pending"
+                              ? "Pending"
+                              : "Rejected")}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.detailsHeroAmount}>
+                    {selectedDepositRequest.formatted_amount ||
+                      `₹ ${Number(selectedDepositRequest.amount).toLocaleString("en-IN")}`}
+                  </Text>
+
+                  {/* Status Notice Banner */}
+                  {selectedDepositRequest.status === "approved" && (
+                    <View style={styles.approvedBanner}>
+                      <Ionicons
+                        name="checkmark-done-circle"
+                        size={18}
+                        color="#27A462"
+                      />
+                      <Text style={styles.approvedBannerText}>
+                        This request has been approved and the amount is
+                        credited to your wallet balance.
+                      </Text>
+                    </View>
+                  )}
+
+                  {selectedDepositRequest.status === "pending" && (
+                    <View style={styles.pendingBanner}>
+                      <Ionicons
+                        name="hourglass-outline"
+                        size={18}
+                        color="#C89738"
+                      />
+                      <Text style={styles.pendingBannerText}>
+                        Your deposit is under verification by the accounts team.
+                        Once approved, the amount will reflect in your wallet.
+                      </Text>
+                    </View>
+                  )}
+
+                  {selectedDepositRequest.status === "rejected" && (
+                    <View style={styles.rejectedBanner}>
+                      <Ionicons
+                        name="alert-circle-outline"
+                        size={18}
+                        color="#EF4444"
+                      />
+                      <Text style={styles.rejectedBannerText}>
+                        This deposit request was rejected. Please review the
+                        payment proof or submit a fresh request.
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* 2. Wallet Transaction Details (if approved) */}
+                {selectedDepositRequest.transaction && (
+                  <View style={styles.detailsSectionCard}>
+                    <View style={styles.detailsSectionHeader}>
+                      <View style={styles.sectionIconBadgeGreen}>
+                        <Ionicons
+                          name="swap-horizontal"
+                          size={15}
+                          color="#27A462"
+                        />
+                      </View>
+                      <Text style={styles.detailsSectionTitle}>
+                        Wallet Credit Transaction
+                      </Text>
+                    </View>
+
+                    <DetailRow
+                      icon="receipt-outline"
+                      label="Transaction ID"
+                      value={`#TXN-${selectedDepositRequest.transaction.id}`}
+                    />
+                    <DetailRow
+                      icon="add-circle-outline"
+                      label="Amount Added"
+                      value={`+ ₹${Number(
+                        selectedDepositRequest.transaction.amount,
+                      ).toLocaleString("en-IN")}`}
+                      valueColor="#27A462"
+                      bold
+                    />
+                    {selectedDepositRequest.transaction.remark ? (
+                      <DetailRow
+                        icon="chatbox-outline"
+                        label="Admin Note"
+                        value={selectedDepositRequest.transaction.remark}
+                      />
+                    ) : null}
+                    <DetailRow
+                      icon="time-outline"
+                      label="Credited At"
+                      value={formatDate(
+                        selectedDepositRequest.transaction.created_at,
+                      )}
+                      last
+                    />
+                  </View>
+                )}
+
+                {/* 3. Detailed Request Info */}
+                <View style={styles.detailsSectionCard}>
+                  <View style={styles.detailsSectionHeader}>
+                    <View style={styles.sectionIconBadgePink}>
+                      <Ionicons
+                        name="document-text-outline"
+                        size={15}
+                        color="#E64A78"
+                      />
+                    </View>
+                    <Text style={styles.detailsSectionTitle}>
+                      Deposit Information
+                    </Text>
+                  </View>
+
+                  <DetailRow
+                    icon={
+                      selectedDepositRequest.payment_method === "online"
+                        ? "card-outline"
+                        : "cash-outline"
+                    }
+                    label="Payment Mode"
+                    value={
+                      selectedDepositRequest.payment_method_label ||
+                      (selectedDepositRequest.payment_method === "online"
+                        ? "Online Transfer"
+                        : "Cash Deposit")
+                    }
+                  />
+                  <DetailRow
+                    icon="finger-print-outline"
+                    label="Reference ID"
+                    value={`#${selectedDepositRequest.id}`}
+                  />
+                  <DetailRow
+                    icon="calendar-outline"
+                    label="Requested On"
+                    value={
+                      selectedDepositRequest.formatted_created_at ||
+                      formatDate(selectedDepositRequest.created_at)
+                    }
+                  />
+                  <DetailRow
+                    icon="time-outline"
+                    label="Processed On"
+                    value={
+                      selectedDepositRequest.formatted_updated_at ||
+                      (selectedDepositRequest.updated_at
+                        ? formatDate(selectedDepositRequest.updated_at)
+                        : null)
+                    }
+                  />
+                  <DetailRow
+                    icon="shield-checkmark-outline"
+                    label="Reviewed By"
+                    value={selectedDepositRequest.action_by_name}
+                  />
+                  <DetailRow
+                    icon="chatbox-ellipses-outline"
+                    label="Note"
+                    value={selectedDepositRequest.remark}
+                    last
+                  />
+                </View>
+
+                {/* 4. Payment Proof / Receipt */}
+                {(proofUrl || selectedDepositRequest.is_pdf) && (
+                  <View style={styles.detailsSectionCard}>
+                    <View style={styles.detailsSectionHeader}>
+                      <View style={styles.sectionIconBadgePink}>
+                        <Ionicons
+                          name="receipt-outline"
+                          size={15}
+                          color="#E64A78"
+                        />
+                      </View>
+                      <Text style={styles.detailsSectionTitle}>
+                        Payment Receipt
+                      </Text>
+                    </View>
+
+                    {selectedDepositRequest.is_pdf ? (
+                      <TouchableOpacity
+                        style={styles.pdfCard}
+                        onPress={() => {
+                          const url =
+                            selectedDepositRequest.proof_file_url ||
+                            selectedDepositRequest.proof_file;
+                          if (url) Linking.openURL(url);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <View style={styles.pdfIconWrap}>
+                          <Ionicons
+                            name="document-text"
+                            size={24}
+                            color="#EF4444"
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.pdfFileName} numberOfLines={1}>
+                            {selectedDepositRequest.file_name ||
+                              "Payment_Receipt.pdf"}
+                          </Text>
+                          <Text style={styles.pdfTapText}>Tap to open PDF</Text>
+                        </View>
+                        <Ionicons
+                          name="open-outline"
+                          size={18}
+                          color="#E64A78"
+                        />
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={styles.imageProofBox}>
+                        {proofUrl ? (
+                          <>
+                            <TouchableOpacity
+                              style={styles.imageProofTapWrap}
+                              activeOpacity={0.85}
+                              disabled={receiptImgError}
+                              onPress={() => openFullscreenPreview(proofUrl)}
+                            >
+                              <Image
+                                source={{ uri: proofUrl }}
+                                style={styles.imageProofImg}
+                                resizeMode="cover"
+                                onLoadStart={() => setReceiptImgLoading(true)}
+                                onLoadEnd={() => setReceiptImgLoading(false)}
+                                onError={() => {
+                                  setReceiptImgLoading(false);
+                                  setReceiptImgError(true);
+                                }}
+                              />
+
+                              {!receiptImgLoading && !receiptImgError && (
+                                <View style={styles.imageZoomPill}>
+                                  <Ionicons
+                                    name="expand"
+                                    size={13}
+                                    color="#FFFFFF"
+                                  />
+                                  <Text style={styles.imageZoomText}>
+                                    Tap to view full receipt
+                                  </Text>
+                                </View>
+                              )}
+                            </TouchableOpacity>
+
+                            {receiptImgLoading && !receiptImgError && (
+                              <View style={styles.imageProofOverlay}>
+                                <ActivityIndicator
+                                  size="small"
+                                  color="#E64A78"
+                                />
+                                <Text style={styles.imageProofOverlayText}>
+                                  Loading receipt...
+                                </Text>
+                              </View>
+                            )}
+
+                            {receiptImgError && (
+                              <View style={styles.imageProofErrorOverlay}>
+                                <Ionicons
+                                  name="image-outline"
+                                  size={26}
+                                  color="#9E8E93"
+                                />
+                                <Text style={styles.imageProofErrorText}>
+                                  Couldn't load receipt image
+                                </Text>
+                                <TouchableOpacity
+                                  style={styles.imageProofRetryBtn}
+                                  onPress={() => {
+                                    setReceiptImgError(false);
+                                    setReceiptImgLoading(true);
+                                  }}
+                                >
+                                  <Ionicons
+                                    name="refresh"
+                                    size={13}
+                                    color="#E64A78"
+                                  />
+                                  <Text style={styles.imageProofRetryText}>
+                                    Retry
+                                  </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  onPress={() => Linking.openURL(proofUrl)}
+                                >
+                                  <Text style={styles.imageProofOpenLink}>
+                                    Open in browser instead
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                          </>
+                        ) : null}
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* Subtle loading indicator if refreshing details in background */}
+                {loadingDetails && (
+                  <View style={styles.detailsRefreshingRow}>
+                    <ActivityIndicator size="small" color="#E64A78" />
+                    <Text style={styles.detailsRefreshingText}>
+                      Syncing latest details...
+                    </Text>
+                  </View>
+                )}
+
+                {/* Close Button */}
+                <TouchableOpacity
+                  style={styles.detailsDismissBtn}
+                  onPress={() => setDetailsModalVisible(false)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.detailsDismissBtnText}>Close</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Fullscreen Receipt Viewer Modal ── */}
+      <Modal
+        visible={previewImageVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewImageVisible(false)}
+      >
+        <SafeAreaView style={styles.fullscreenSafe} edges={["top", "bottom"]}>
+          <View style={styles.fullscreenHeader}>
+            <Text style={styles.fullscreenTitle}>Receipt Preview</Text>
+            <View style={styles.fullscreenHeaderActions}>
+              {previewImageUrl ? (
+                <TouchableOpacity
+                  style={styles.fullscreenOpenBtn}
+                  onPress={() => Linking.openURL(previewImageUrl)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="open-outline" size={18} color="#FFFFFF" />
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity
+                style={styles.fullscreenClose}
+                onPress={() => setPreviewImageVisible(false)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={22} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View style={styles.fullscreenBody}>
+            {previewImageUrl ? (
+              <>
+                <Image
+                  source={{ uri: previewImageUrl }}
+                  style={styles.fullscreenImage}
+                  resizeMode="contain"
+                  onLoadStart={() => setPreviewImgLoading(true)}
+                  onLoadEnd={() => setPreviewImgLoading(false)}
+                  onError={() => {
+                    setPreviewImgLoading(false);
+                    setPreviewImgError(true);
+                  }}
+                />
+                {previewImgLoading && !previewImgError && (
+                  <View style={styles.fullscreenLoader}>
+                    <ActivityIndicator size="large" color="#FFFFFF" />
+                  </View>
+                )}
+                {previewImgError && (
+                  <View style={styles.fullscreenErrorBox}>
+                    <Ionicons
+                      name="image-outline"
+                      size={40}
+                      color="rgba(255,255,255,0.6)"
+                    />
+                    <Text style={styles.fullscreenErrorText}>
+                      Couldn't load this image
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.fullscreenErrorBtn}
+                      onPress={() => Linking.openURL(previewImageUrl)}
+                    >
+                      <Text style={styles.fullscreenErrorBtnText}>
+                        Open in browser
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
+            ) : null}
+          </View>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
@@ -1107,8 +1733,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(200,151,56,0.1)",
   },
 
-  // Segmented Tabs — reworked: dedicated icon chip + label + separate count pill
-  // so nothing gets squeezed together ("coiled") at any screen width.
+  // Segmented Tabs
   tabContainer: {
     flexDirection: "row",
     backgroundColor: "#FFFFFF",
@@ -1189,7 +1814,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
 
-  // Transactions Card — accent bar + clearer hierarchy
+  // Transactions Card
   txnCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -1298,7 +1923,7 @@ const styles = StyleSheet.create({
     color: "#EF4444",
   },
 
-  // Deposit Request Card — accent bar + icon chip + divider for clearer sections
+  // Deposit Request Card
   depositCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 18,
@@ -1414,10 +2039,22 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 1,
     borderColor: "#F0EAED",
+    position: "relative",
   },
   proofThumb: {
     width: "100%",
     height: "100%",
+  },
+  proofThumbBadge: {
+    position: "absolute",
+    bottom: 2,
+    right: 2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "rgba(42,30,36,0.7)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   depositRemark: {
     fontFamily: "Poppins_400Regular",
@@ -1774,5 +2411,476 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins_600SemiBold",
     fontSize: 14,
     color: "#9E8E93",
+  },
+
+  // Modal Overlay & Top Backdrop
+  modalBackdropTop: {
+    flex: 1,
+    width: "100%",
+  },
+
+  // Deposit Details Bottom Sheet Slider
+  detailsModalSheet: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: SHEET_MAX_HEIGHT,
+    width: "100%",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    elevation: 25,
+    overflow: "hidden",
+  },
+  detailsHeaderWrap: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F5F0F2",
+    backgroundColor: "#FFFFFF",
+  },
+  detailsScroll: {
+    flexShrink: 1,
+  },
+  detailsScrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: Platform.OS === "ios" ? 40 : 28,
+  },
+  detailsHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  detailsIdBadge: {
+    backgroundColor: "rgba(230,74,120,0.1)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  detailsIdBadgeText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 12,
+    color: "#E64A78",
+  },
+  detailsCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#FAF7F8",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#F0EAED",
+  },
+  detailsLoaderBox: {
+    paddingVertical: 50,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  detailsLoaderText: {
+    marginTop: 12,
+    fontFamily: "Poppins_400Regular",
+    fontSize: 13,
+    color: "#9E8E93",
+  },
+  detailsHeroCard: {
+    backgroundColor: "#FAF7F8",
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#F0EAED",
+  },
+  detailsHeroTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  detailsHeroLabel: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 12,
+    color: "#9E8E93",
+  },
+  detailsHeroAmount: {
+    fontFamily: "Poppins_700Bold",
+    fontSize: 26,
+    color: "#2A1E24",
+    marginBottom: 12,
+  },
+  approvedBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: "#E8FBF5",
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#C5F2E1",
+  },
+  approvedBannerText: {
+    flex: 1,
+    fontFamily: "Poppins_400Regular",
+    fontSize: 11.5,
+    color: "#1E7E4C",
+    lineHeight: 16,
+  },
+  pendingBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: "#FDF9EE",
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#F5E8C7",
+  },
+  pendingBannerText: {
+    flex: 1,
+    fontFamily: "Poppins_400Regular",
+    fontSize: 11.5,
+    color: "#9A7220",
+    lineHeight: 16,
+  },
+  rejectedBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: "#FEF2F2",
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#FDC8C8",
+  },
+  rejectedBannerText: {
+    flex: 1,
+    fontFamily: "Poppins_400Regular",
+    fontSize: 11.5,
+    color: "#B91C1C",
+    lineHeight: 16,
+  },
+  detailsSectionCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#F0EAED",
+  },
+  detailsSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#FAF7F8",
+  },
+  sectionIconBadgeGreen: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#E8FBF5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sectionIconBadgePink: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(230,74,120,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  detailsSectionTitle: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 13,
+    color: "#2A1E24",
+  },
+  imageProofTapWrap: {
+    position: "relative",
+    width: "100%",
+    height: 200,
+  },
+
+  // ── Fixed row layout: label has a fixed max width, value
+  // flexes and wraps beneath/beside it so nothing overlaps.
+  detailsInfoRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#FAF7F8",
+    gap: 10,
+  },
+  detailsInfoRowLast: {
+    borderBottomWidth: 0,
+  },
+  detailsInfoRowLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    width: 108,
+    flexShrink: 0,
+    paddingTop: 1,
+  },
+  detailsInfoLabel: {
+    fontFamily: "Poppins_400Regular",
+    fontSize: 12,
+    color: "#9E8E93",
+  },
+  detailsInfoValue: {
+    flex: 1,
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 12.5,
+    color: "#2A1E24",
+    textAlign: "right",
+    flexWrap: "wrap",
+    lineHeight: 17,
+  },
+
+  pdfCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#FAF7F8",
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#F0EAED",
+  },
+  pdfIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: "#FEE2E2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pdfFileName: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 12.5,
+    color: "#2A1E24",
+  },
+  pdfTapText: {
+    fontFamily: "Poppins_400Regular",
+    fontSize: 11,
+    color: "#E64A78",
+    marginTop: 2,
+  },
+
+  // Receipt image box inside the details sheet, with loading /
+  // error overlays so the tile is never blank with no feedback.
+  imageProofBox: {
+    borderRadius: 14,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#F0EAED",
+    position: "relative",
+    backgroundColor: "#FAF7F8",
+    minHeight: 180,
+  },
+  imageProofImg: {
+    width: "100%",
+    height: 200,
+  },
+  imageProofOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FAF7F8",
+    gap: 8,
+  },
+  imageProofOverlayText: {
+    fontFamily: "Poppins_400Regular",
+    fontSize: 11.5,
+    color: "#9E8E93",
+  },
+  imageProofErrorOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FAF7F8",
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  imageProofErrorText: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 12,
+    color: "#6B5F63",
+    textAlign: "center",
+  },
+  imageProofRetryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(230,74,120,0.1)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  imageProofRetryText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 11.5,
+    color: "#E64A78",
+  },
+  imageProofOpenLink: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 11,
+    color: "#9E8E93",
+    textDecorationLine: "underline",
+  },
+  imageZoomPill: {
+    position: "absolute",
+    bottom: 8,
+    right: 8,
+    backgroundColor: "rgba(42,30,36,0.75)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  imageZoomText: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 11,
+    color: "#FFFFFF",
+  },
+  detailsRefreshingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 10,
+  },
+  detailsRefreshingText: {
+    fontFamily: "Poppins_400Regular",
+    fontSize: 11.5,
+    color: "#9E8E93",
+  },
+  detailsDismissBtn: {
+    backgroundColor: "#FAF7F8",
+    borderWidth: 1,
+    borderColor: "#F0EAED",
+    borderRadius: 14,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  detailsDismissBtnText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 14,
+    color: "#2A1E24",
+  },
+  depositCardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 4,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#FAF7F8",
+  },
+  viewDetailsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  viewDetailsText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 11,
+    color: "#E64A78",
+  },
+  fullscreenSafe: {
+    flex: 1,
+    backgroundColor: "#000000",
+  },
+  fullscreenHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
+  fullscreenHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  fullscreenTitle: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 15,
+    color: "#FFFFFF",
+  },
+  fullscreenOpenBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fullscreenClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fullscreenBody: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  fullscreenImage: {
+    width: "100%",
+    height: "100%",
+  },
+  fullscreenLoader: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fullscreenErrorBox: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingHorizontal: 30,
+  },
+  fullscreenErrorText: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 13,
+    color: "rgba(255,255,255,0.8)",
+    textAlign: "center",
+  },
+  fullscreenErrorBtn: {
+    backgroundColor: "rgba(255,255,255,0.15)",
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  fullscreenErrorBtnText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 13,
+    color: "#FFFFFF",
   },
 });

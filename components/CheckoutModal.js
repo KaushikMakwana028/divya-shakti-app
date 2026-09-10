@@ -226,18 +226,32 @@ export default function CheckoutModal({
       let verifiedResults = [];
 
       // If backend already completed payment via wallet in place_order (is_paid === true)
-      if (placeRes.is_paid || rawData.is_paid) {
-        if (Array.isArray(placedData)) {
+      if (placeRes.is_paid || rawData.is_paid || placedData?.is_paid) {
+        if (Array.isArray(placedData) && placedData.length > 0) {
           verifiedResults = placedData;
-        } else if (placedData && typeof placedData === 'object') {
+        } else if (Array.isArray(placedData?.orders) && placedData.orders.length > 0) {
+          verifiedResults = placedData.orders;
+        } else if (Array.isArray(rawData.orders) && rawData.orders.length > 0) {
+          verifiedResults = rawData.orders;
+        } else if (placedData && typeof placedData === 'object' && placedData.id) {
           verifiedResults = [placedData];
+        } else if (rawData.order && typeof rawData.order === 'object' && rawData.order.id) {
+          verifiedResults = [rawData.order];
+        } else if (Array.isArray(rawData.order_ids) && rawData.order_ids.length > 0) {
+          verifiedResults = rawData.order_ids.map((id) => ({ id, status: 'placed', is_paid: true }));
+        } else if (Array.isArray(placedData?.order_ids) && placedData.order_ids.length > 0) {
+          verifiedResults = placedData.order_ids.map((id) => ({ id, status: 'placed', is_paid: true }));
         }
       } else {
         // Fallback: If order was created unpaid, verify payment via /verify_order_payment
         setProcessingStep('Verifying wallet payment & confirming...');
 
         const orderIdsToVerify = [];
-        if (Array.isArray(placedData)) {
+        if (Array.isArray(rawData?.order_ids)) {
+          orderIdsToVerify.push(...rawData.order_ids);
+        } else if (Array.isArray(placedData?.order_ids)) {
+          orderIdsToVerify.push(...placedData.order_ids);
+        } else if (Array.isArray(placedData)) {
           placedData.forEach((ord) => {
             if (ord?.id) orderIdsToVerify.push(ord.id);
           });
@@ -249,10 +263,14 @@ export default function CheckoutModal({
           orderIdsToVerify.push(rawData.order.id);
         } else if (placedData && placedData.id) {
           orderIdsToVerify.push(placedData.id);
+        } else if (placedData && placedData.order_id) {
+          orderIdsToVerify.push(placedData.order_id);
         }
 
         for (const ordId of orderIdsToVerify) {
-          const verifyRes = await orderService.verifyPayment(ordId);
+          const verifyRes = await (orderService.verifyOrderPayment
+            ? orderService.verifyOrderPayment(ordId)
+            : orderService.verifyPayment(ordId));
           if (verifyRes.success) {
             verifiedResults.push(verifyRes.data || { id: ordId, status: 'placed', is_paid: true });
           } else {

@@ -86,7 +86,9 @@ export default function CartScreen({ navigation }) {
       return;
     }
 
-    setCheckoutVisible(true);
+    navigation.navigate('CheckoutReview', {
+      isBuyNow: false,
+    });
   };
 
   const handleUpdateQty = async (productId, newQty) => {

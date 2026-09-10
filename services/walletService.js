@@ -1,27 +1,9 @@
-import axios from 'axios';
-import API_CONFIG from '../config/api';
+import apiClient from './apiClient';
 import storageService from './storageService';
 
 class WalletService {
     constructor() {
-        this.api = axios.create({
-            baseURL: API_CONFIG.BASE_URL,
-            timeout: API_CONFIG.TIMEOUT,
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        });
-
-        this.api.interceptors.request.use(
-            async (config) => {
-                const token = await storageService.getToken();
-                if (token) {
-                    config.headers.Authorization = `Bearer ${token}`;
-                }
-                return config;
-            },
-            (error) => Promise.reject(error)
-        );
+        this.api = apiClient;
     }
 
     // ─────────────────────────────────────────
@@ -118,7 +100,7 @@ class WalletService {
     // Get Deposit Requests (Paginated)
     // GET /api/get_deposit_requests
     // ─────────────────────────────────────────
-    async getDepositRequests(page = 1, limit = 20) {
+    async getDepositRequests(page = 1, limit = 20, params = {}) {
         try {
             const token = await storageService.getToken();
             if (!token) {
@@ -131,7 +113,7 @@ class WalletService {
             }
 
             const response = await this.api.get('/get_deposit_requests', {
-                params: { page, limit },
+                params: { page, limit, ...params },
             });
 
             if (response.data && response.data.status) {
@@ -159,6 +141,60 @@ class WalletService {
                 requests: [],
                 total: 0,
                 message: error.response?.data?.message || error.message || 'Failed to fetch deposit requests',
+            };
+        }
+    }
+
+    // ─────────────────────────────────────────
+    // Get Individual Deposit Request Details
+    // GET /api/get_deposit_requests/:id or GET /api/get_deposit_requests?id=:id
+    // ─────────────────────────────────────────
+    async getDepositRequestDetails(id) {
+        try {
+            const token = await storageService.getToken();
+            if (!token) {
+                return {
+                    success: false,
+                    request: null,
+                    message: 'User is not logged in',
+                };
+            }
+
+            let response;
+            try {
+                // Primary: RESTful URL /get_deposit_requests/{id}
+                response = await this.api.get(`/get_deposit_requests/${id}`);
+            } catch (err) {
+                // Fallback: Query parameter /get_deposit_requests?id={id}
+                if (err.response && (err.response.status === 404 || err.response.status === 405)) {
+                    response = await this.api.get('/get_deposit_requests', {
+                        params: { id },
+                    });
+                } else {
+                    throw err;
+                }
+            }
+
+            if (response.data && response.data.status) {
+                const reqData = response.data.data?.request || response.data.data;
+                return {
+                    success: true,
+                    request: reqData,
+                    message: response.data.message || 'Deposit request details retrieved successfully',
+                };
+            }
+
+            return {
+                success: false,
+                request: null,
+                message: response.data?.message || 'Failed to fetch deposit request details',
+            };
+        } catch (error) {
+            console.error('WalletService getDepositRequestDetails error:', error.response?.data || error.message);
+            return {
+                success: false,
+                request: null,
+                message: error.response?.data?.message || error.message || 'Failed to fetch deposit request details',
             };
         }
     }

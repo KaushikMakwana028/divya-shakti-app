@@ -11,6 +11,7 @@ import {
   Image,
   Alert,
   Keyboard,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -157,9 +158,14 @@ export default function OtpVerifyScreen({ navigation, route }) {
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
       >
-        <View style={styles.container}>
+        <ScrollView
+          contentContainerStyle={[styles.container, { flexGrow: 1, paddingBottom: 60 }]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={true}
+        >
           {/* Back Button */}
           <TouchableOpacity
             style={styles.backBtn}
@@ -250,7 +256,7 @@ export default function OtpVerifyScreen({ navigation, route }) {
           >
             <Text style={styles.changeBtnText}>Change Phone Number</Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   Image,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,9 +17,28 @@ import ProfileIncompleteModal from "../components/ProfileIncompleteModal";
 import CheckoutModal from "../components/CheckoutModal";
 import { useCart } from "../contexts/CartContext";
 import { useAuth } from "../contexts/AuthContext";
+import productService from "../services/productService";
 
 export default function ProductDetailsScreen({ route, navigation }) {
-  const { product } = route.params || {};
+  const initialProduct = route.params?.product;
+  const productId =
+    route.params?.productId ||
+    route.params?.id ||
+    initialProduct?.id ||
+    initialProduct?.product_id;
+
+  const [product, setProduct] = useState(initialProduct || null);
+  const [loading, setLoading] = useState(
+    Boolean(
+      productId &&
+        (!initialProduct ||
+          initialProduct.price === undefined ||
+          !initialProduct.name)
+    )
+  );
+  const [refreshing, setRefreshing] = useState(false);
+  const [fetchError, setFetchError] = useState(null);
+
   const { addToCart, getCartCount } = useCart();
   const { user } = useAuth();
   const [quantity, setQuantity] = useState(1);
@@ -34,7 +54,71 @@ export default function ProductDetailsScreen({ route, navigation }) {
   const [isProfileUnderReview, setIsProfileUnderReview] = useState(false);
   const [profileModalMessage, setProfileModalMessage] = useState("");
 
-  if (!product) {
+  const fetchProductDetails = useCallback(
+    async (isRefresh = false) => {
+      if (!productId) {
+        setLoading(false);
+        return;
+      }
+
+      if (isRefresh) {
+        setRefreshing(true);
+      }
+
+      try {
+        const res = await productService.getProductDetail(productId);
+        if (res.success && res.data) {
+          setProduct((prev) => ({
+            ...(prev || {}),
+            ...res.data,
+          }));
+          setFetchError(null);
+        } else {
+          if (!product) {
+            setFetchError(res.message || "Failed to load product details.");
+          }
+        }
+      } catch (err) {
+        console.error("ProductDetailsScreen fetch error:", err);
+        if (!product) {
+          setFetchError("Unable to load product details.");
+        }
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [productId, product]
+  );
+
+  useEffect(() => {
+    if (productId) {
+      fetchProductDetails();
+    }
+  }, [productId]);
+
+  useEffect(() => {
+    if (route.params?.product) {
+      setProduct((prev) => ({
+        ...(prev || {}),
+        ...route.params.product,
+      }));
+    }
+  }, [route.params?.product]);
+
+  if (loading && (!product || product.price === undefined)) {
+    return (
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <Header title="Product Details" showBack={true} />
+        <View style={styles.loaderCenter}>
+          <ActivityIndicator size="large" color="#E64A78" />
+          <Text style={styles.loaderText}>Loading product details...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!product || (!product.name && product.price === undefined)) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <Header title="Product Details" showBack={true} />
@@ -42,7 +126,9 @@ export default function ProductDetailsScreen({ route, navigation }) {
           <View style={styles.notFoundIconBox}>
             <Ionicons name="alert-circle-outline" size={36} color="#E64A78" />
           </View>
-          <Text style={styles.notFoundText}>Product not found.</Text>
+          <Text style={styles.notFoundText}>
+            {fetchError || "Product not found."}
+          </Text>
           <TouchableOpacity
             style={styles.backBtn}
             activeOpacity={0.8}
@@ -166,7 +252,11 @@ export default function ProductDetailsScreen({ route, navigation }) {
       return;
     }
 
-    setCheckoutVisible(true);
+    navigation.navigate("CheckoutReview", {
+      isBuyNow: true,
+      productId: product.id,
+      quantity,
+    });
   };
 
   const handleCartPress = () => {
@@ -186,12 +276,20 @@ export default function ProductDetailsScreen({ route, navigation }) {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => fetchProductDetails(true)}
+            colors={["#E64A78"]}
+            tintColor="#E64A78"
+          />
+        }
       >
         {/* Product Image Section */}
         <View style={styles.imageCard}>
-          {product.image ? (
+          {product.image || product.product_image ? (
             <Image
-              source={{ uri: product.image }}
+              source={{ uri: product.image || product.product_image }}
               style={styles.productImage}
               resizeMode="contain"
             />
@@ -387,7 +485,7 @@ export default function ProductDetailsScreen({ route, navigation }) {
             name: product.name,
             price: unitPrice,
             quantity: quantity,
-            image: product.image,
+            image: product.image || product.product_image,
           },
         ]}
         totalAmount={buyNowTotal}
@@ -420,6 +518,18 @@ const styles = StyleSheet.create({
   },
   container: {
     paddingBottom: 120,
+  },
+  loaderCenter: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    gap: 12,
+  },
+  loaderText: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 14,
+    color: "#8C7A82",
   },
   notFoundCenter: {
     flex: 1,

@@ -99,12 +99,13 @@ export default function RegisterScreen({ navigation }) {
         <SafeAreaView style={styles.safe}>
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
             >
                 <ScrollView
-                    contentContainerStyle={styles.container}
+                    contentContainerStyle={[styles.container, { paddingBottom: 140 }]}
                     keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={false}
+                    showsVerticalScrollIndicator={true}
                 >
                     {/* Back Button */}
                     <TouchableOpacity

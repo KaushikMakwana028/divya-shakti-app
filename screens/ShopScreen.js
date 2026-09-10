@@ -244,28 +244,6 @@ export default function ShopScreen({ navigation }) {
           ) : null}
         </View>
 
-        {/* Offer Banner */}
-        <View style={styles.offerBanner}>
-          <View style={styles.offerDecorRing} pointerEvents="none" />
-          <View style={styles.offerLeft}>
-            <View style={styles.goldTag}>
-              <Ionicons name="star" size={10} color="#C89738" />
-              <Text style={styles.goldTagText}>Special Offer</Text>
-            </View>
-            <Text style={styles.offerTitle}>
-              Get 20% OFF{"\n"}on your order
-            </Text>
-            <TouchableOpacity style={styles.offerBtn} activeOpacity={0.8}>
-              <Text style={styles.offerBtnText}>Shop Now</Text>
-              <Ionicons name="arrow-forward" size={13} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.offerRight}>
-            <View style={styles.offerDecorCircle}>
-              <Ionicons name="gift" size={40} color="#FFFFFF" />
-            </View>
-          </View>
-        </View>
 
         {/* Categories Horizontal Selector */}
         <View style={styles.sectionHeaderRow}>

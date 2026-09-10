@@ -45,6 +45,7 @@ export default function EditProfileScreen() {
     name: "",
     email: "",
     phone: "",
+    gender: "",
     address: "",
     aadhar_number: "",
     pan_number: "",
@@ -95,6 +96,7 @@ export default function EditProfileScreen() {
             name: u.name || "",
             email: u.email || "",
             phone: u.phone || u.mobile || "",
+            gender: u.gender || "",
             address: u.address || "",
             aadhar_number: u.aadhar_number || "",
             pan_number: u.pan_number || "",
@@ -157,10 +159,10 @@ export default function EditProfileScreen() {
   // Section Completion Counts
   // ─────────────────────────────────────────────────────────────
   const personalStats = useMemo(() => {
-    const fields = [form.name, form.email, form.phone, form.address];
+    const fields = [form.name, form.email, form.phone, form.gender, form.address];
     const filled = fields.filter((f) => !!f && String(f).trim() !== "").length;
-    return { filled, total: 4, isComplete: filled === 4 };
-  }, [form.name, form.email, form.phone, form.address]);
+    return { filled, total: 5, isComplete: filled === 5 };
+  }, [form.name, form.email, form.phone, form.gender, form.address]);
 
   const kycStats = useMemo(() => {
     const hasAadharImg =
@@ -300,6 +302,7 @@ export default function EditProfileScreen() {
         name: form.name.trim(),
         email: form.email.trim(),
         phone: form.phone.trim(),
+        gender: form.gender ? form.gender.toLowerCase().trim() : "",
         address: form.address.trim(),
         aadhar_number: form.aadhar_number.trim(),
         pan_number: form.pan_number.trim().toUpperCase(),
@@ -414,11 +417,12 @@ export default function EditProfileScreen() {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
       >
         <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.container}
+          showsVerticalScrollIndicator={true}
+          contentContainerStyle={[styles.container, { paddingBottom: 180 }]}
           keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
@@ -673,6 +677,55 @@ export default function EditProfileScreen() {
                       onChangeText={(val) => updateField("phone", val)}
                       {...fieldFocusProps("phone")}
                     />
+                  </View>
+                </View>
+
+                {/* Gender */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Gender *</Text>
+                  <View style={styles.genderRow}>
+                    {[
+                      { label: "Male", value: "male", icon: "male-outline" },
+                      { label: "Female", value: "female", icon: "female-outline" },
+                      { label: "Other", value: "other", icon: "person-outline" },
+                    ].map((item) => {
+                      const isSelected =
+                        (form.gender || "").toLowerCase() === item.value;
+                      return (
+                        <TouchableOpacity
+                          key={item.value}
+                          style={[
+                            styles.genderOption,
+                            isSelected && styles.genderOptionSelected,
+                          ]}
+                          onPress={() => updateField("gender", item.value)}
+                          activeOpacity={0.8}
+                        >
+                          <View
+                            style={[
+                              styles.genderRadioCircle,
+                              isSelected && styles.genderRadioCircleSelected,
+                            ]}
+                          >
+                            {isSelected && <View style={styles.genderRadioDot} />}
+                          </View>
+                          <Ionicons
+                            name={item.icon}
+                            size={16}
+                            color={isSelected ? "#E64A78" : "#9E8E93"}
+                            style={{ marginRight: 5 }}
+                          />
+                          <Text
+                            style={[
+                              styles.genderOptionText,
+                              isSelected && styles.genderOptionTextSelected,
+                            ]}
+                          >
+                            {item.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </View>
 
@@ -1741,6 +1794,57 @@ const styles = StyleSheet.create({
   multilineInput: {
     paddingTop: 8,
     textAlignVertical: "top",
+  },
+
+  // Gender Selector Styles
+  genderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  genderOption: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FAF7F8",
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#F0EAED",
+    paddingVertical: 12,
+    paddingHorizontal: 6,
+  },
+  genderOptionSelected: {
+    borderColor: "#E64A78",
+    backgroundColor: "rgba(230,74,120,0.06)",
+  },
+  genderRadioCircle: {
+    width: 15,
+    height: 15,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: "#C5B8BD",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 5,
+  },
+  genderRadioCircleSelected: {
+    borderColor: "#E64A78",
+  },
+  genderRadioDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: "#E64A78",
+  },
+  genderOptionText: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 12.5,
+    color: "#6B5E62",
+  },
+  genderOptionTextSelected: {
+    fontFamily: "Poppins_600SemiBold",
+    color: "#E64A78",
   },
 
   // Document Upload
