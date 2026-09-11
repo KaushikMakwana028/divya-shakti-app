@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import Header from '../components/Header';
 import ProfileIncompleteModal from '../components/ProfileIncompleteModal';
 import CheckoutModal from '../components/CheckoutModal';
@@ -29,7 +30,7 @@ export default function CartScreen({ navigation }) {
     getCartTotal,
     getCartCount,
   } = useCart();
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
 
   const [refreshing, setRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
@@ -44,38 +45,65 @@ export default function CartScreen({ navigation }) {
   // Checkout Modal State
   const [checkoutVisible, setCheckoutVisible] = useState(false);
 
+  // Silently refresh profile whenever user focuses on Cart screen
+  useFocusEffect(
+    useCallback(() => {
+      if (refreshProfile) {
+        refreshProfile();
+      }
+    }, [refreshProfile])
+  );
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchCart();
+    await Promise.all([
+      fetchCart(),
+      refreshProfile ? refreshProfile() : Promise.resolve(),
+    ]);
     setRefreshing(false);
-  }, [fetchCart]);
+  }, [fetchCart, refreshProfile]);
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (cartItems.length === 0) {
       Alert.alert('Cart Empty', 'Please add items to your cart first.');
       return;
     }
 
+    // Live Server Sync if locally inactive or pending approval
+    let currentUser = user;
+    const isLocallyPendingOrInactive =
+      currentUser?.is_profile_active === false ||
+      currentUser?.is_profile_active === 0 ||
+      (currentUser?.profile_completion_percentage !== undefined &&
+        Number(currentUser?.profile_completion_percentage) < 100);
+
+    if (isLocallyPendingOrInactive && refreshProfile) {
+      const fresh = await refreshProfile();
+      if (fresh?.success && fresh?.data) {
+        currentUser = fresh.data;
+      }
+    }
+
     // Check profile completion (100% required & active required)
     const isProfileComplete =
-      user?.is_profile_completed === true ||
-      Number(user?.profile_completion_percentage) >= 100;
+      currentUser?.is_profile_completed === true ||
+      Number(currentUser?.profile_completion_percentage) >= 100;
 
     if (
-      user &&
+      currentUser &&
       !isProfileComplete &&
-      user.profile_completion_percentage !== undefined &&
-      Number(user.profile_completion_percentage) < 100
+      currentUser.profile_completion_percentage !== undefined &&
+      Number(currentUser.profile_completion_percentage) < 100
     ) {
-      setProfileCompletionPct(Number(user.profile_completion_percentage) || 0);
-      setMissingFields(user.missing_fields || []);
+      setProfileCompletionPct(Number(currentUser.profile_completion_percentage) || 0);
+      setMissingFields(currentUser.missing_fields || []);
       setIsProfileUnderReview(false);
       setProfileModalMessage('');
       setProfileModalVisible(true);
       return;
     }
 
-    if (user && isProfileComplete && user.is_profile_active === false) {
+    if (currentUser && isProfileComplete && currentUser.is_profile_active === false) {
       setProfileCompletionPct(100);
       setMissingFields([]);
       setIsProfileUnderReview(true);

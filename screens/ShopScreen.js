@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import Header from "../components/Header";
 import ProfileIncompleteModal from "../components/ProfileIncompleteModal";
 import { useCart } from "../contexts/CartContext";
@@ -26,7 +27,7 @@ const CARD_WIDTH = (width - 40 - GRID_GAP) / 2; // 20px screen padding each side
 
 export default function ShopScreen({ navigation }) {
   const { addToCart, getCartCount } = useCart();
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
 
   // Categories & Products State
   const [categories, setCategories] = useState([]);
@@ -95,14 +96,24 @@ export default function ShopScreen({ navigation }) {
     initData();
   }, [initData]);
 
+  // Silently refresh profile whenever user focuses on Shop screen
+  useFocusEffect(
+    useCallback(() => {
+      if (refreshProfile) {
+        refreshProfile();
+      }
+    }, [refreshProfile])
+  );
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await Promise.all([
       loadCategories(),
       loadProducts(selectedCategory, searchQuery),
+      refreshProfile ? refreshProfile() : Promise.resolve(),
     ]);
     setRefreshing(false);
-  }, [loadCategories, loadProducts, selectedCategory, searchQuery]);
+  }, [loadCategories, loadProducts, selectedCategory, searchQuery, refreshProfile]);
 
   // Handle Category Selection
   const handleSelectCategory = (catId) => {
@@ -131,26 +142,40 @@ export default function ShopScreen({ navigation }) {
       return;
     }
 
-    // Client-side Profile Check (100% required & active required)
+    // Live Server Sync if locally inactive or pending approval
+    let currentUser = user;
+    const isLocallyPendingOrInactive =
+      currentUser?.is_profile_active === false ||
+      currentUser?.is_profile_active === 0 ||
+      (currentUser?.profile_completion_percentage !== undefined &&
+        Number(currentUser?.profile_completion_percentage) < 100);
+
+    if (isLocallyPendingOrInactive && refreshProfile) {
+      const fresh = await refreshProfile();
+      if (fresh?.success && fresh?.data) {
+        currentUser = fresh.data;
+      }
+    }
+
     const isProfileComplete =
-      user?.is_profile_completed === true ||
-      Number(user?.profile_completion_percentage) >= 100;
+      currentUser?.is_profile_completed === true ||
+      Number(currentUser?.profile_completion_percentage) >= 100;
 
     if (
-      user &&
+      currentUser &&
       !isProfileComplete &&
-      user.profile_completion_percentage !== undefined &&
-      Number(user.profile_completion_percentage) < 100
+      currentUser.profile_completion_percentage !== undefined &&
+      Number(currentUser.profile_completion_percentage) < 100
     ) {
-      setProfileCompletionPct(Number(user.profile_completion_percentage) || 0);
-      setMissingFields(user.missing_fields || []);
+      setProfileCompletionPct(Number(currentUser.profile_completion_percentage) || 0);
+      setMissingFields(currentUser.missing_fields || []);
       setIsProfileUnderReview(false);
       setProfileModalMessage("");
       setProfileModalVisible(true);
       return;
     }
 
-    if (user && isProfileComplete && user.is_profile_active === false) {
+    if (currentUser && isProfileComplete && currentUser.is_profile_active === false) {
       setProfileCompletionPct(100);
       setMissingFields([]);
       setIsProfileUnderReview(true);

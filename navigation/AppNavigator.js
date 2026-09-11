@@ -26,6 +26,7 @@ import OrderDetailsScreen from "../screens/OrderDetailsScreen";
 import CmsScreen from "../screens/CmsScreen";
 import DeleteAccountScreen from "../screens/DeleteAccountScreen";
 import AboutUsScreen from "../screens/AboutUsScreen";
+import ContactUsScreen from "../screens/ContactUsScreen";
 import BottomBar from "../components/BottomBar";
 
 const Stack = createNativeStackNavigator();
@@ -145,6 +146,11 @@ export default function AppNavigator() {
         <Stack.Screen
           name="AboutUs"
           component={AboutUsScreen}
+          options={{ animation: "slide_from_right" }}
+        />
+        <Stack.Screen
+          name="ContactUs"
+          component={ContactUsScreen}
           options={{ animation: "slide_from_right" }}
         />
         <Stack.Screen

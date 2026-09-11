@@ -174,7 +174,6 @@ class AuthService {
                 };
             } else {
                 console.log('Registration failed:', response.data.message);
-                await storageService.clearAuthData();
 
                 return {
                     success: false,
@@ -183,7 +182,6 @@ class AuthService {
             }
         } catch (error) {
             console.error('Register Verify OTP Error:', error);
-            await storageService.clearAuthData();
 
             return {
                 success: false,

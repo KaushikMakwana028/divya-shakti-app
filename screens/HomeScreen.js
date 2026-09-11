@@ -52,14 +52,14 @@ const QUICK_ACTIONS = [
 ];
 
 export default function HomeScreen({ navigation }) {
-  const { user } = useAuth();
+  const { user, refreshProfile, updateUser } = useAuth();
   const { getCartCount } = useCart();
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   // ─────────────────────────────────────────
-  // Fetch Dashboard Data
+  // Fetch Dashboard Data (with live profile sync)
   // ─────────────────────────────────────────
   const fetchDashboard = useCallback(
     async (isRefresh = false) => {
@@ -73,6 +73,12 @@ export default function HomeScreen({ navigation }) {
         const result = await homeService.getDashboard();
         if (result.success && result.data) {
           setDashboardData(result.data);
+          if (result.data.user && updateUser) {
+            updateUser(result.data.user);
+          }
+        }
+        if (refreshProfile) {
+          refreshProfile();
         }
       } catch (err) {
         console.error("Fetch dashboard error:", err);
@@ -81,7 +87,7 @@ export default function HomeScreen({ navigation }) {
         setRefreshing(false);
       }
     },
-    [dashboardData],
+    [dashboardData, updateUser, refreshProfile],
   );
 
   useEffect(() => {

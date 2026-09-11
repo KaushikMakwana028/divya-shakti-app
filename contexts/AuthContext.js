@@ -5,6 +5,7 @@ import React, {
     useEffect,
     useCallback,
 } from 'react';
+import { AppState } from 'react-native';
 import authService from '../services/authService';
 import profileService from '../services/profileService';
 import storageService from '../services/storageService';
@@ -26,7 +27,7 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     // ─────────────────────────────────────────
-    // Check Auth Status
+    // Check Auth Status (Permanent Token Session)
     // ─────────────────────────────────────────
     const checkAuthStatus = useCallback(async () => {
         try {
@@ -36,25 +37,30 @@ export const AuthProvider = ({ children }) => {
             if (token) {
                 setIsAuthenticated(true);
                 setUser(userData || null);
-                console.log('User found in storage:', userData?.name || 'Logged in');
 
-                // Background sync latest profile details and completion %
+                // Background sync latest profile details without risking logout
                 profileService.getProfile().then((res) => {
                     if (res.success && res.data) {
                         setUser(res.data);
+                        storageService.saveUser(res.data);
                     }
                 }).catch((e) => {
-                    console.log('Background profile fetch error:', e.message);
+                    console.log('Background profile sync note:', e.message);
                 });
             } else {
                 setIsAuthenticated(false);
                 setUser(null);
-                console.log('No authenticated user found');
             }
         } catch (error) {
             console.log('Auth check error:', error.message);
-            setIsAuthenticated(false);
-            setUser(null);
+            // Fallback: check if permanent token exists in any layer
+            const fallbackToken = await storageService.getToken();
+            if (fallbackToken) {
+                setIsAuthenticated(true);
+            } else {
+                setIsAuthenticated(false);
+                setUser(null);
+            }
         } finally {
             setLoading(false);
         }
@@ -64,29 +70,28 @@ export const AuthProvider = ({ children }) => {
     // On App Load
     // ─────────────────────────────────────────
     useEffect(() => {
+        // Token is permanent — unauthorized events do NOT clear user session
         setUnauthorizedHandler(() => {
-            setIsAuthenticated(false);
-            setUser(null);
+            console.log('[AuthContext] Session remains preserved permanently.');
         });
         checkAuthStatus();
     }, [checkAuthStatus]);
 
     // ─────────────────────────────────────────
-    // Refresh Profile
+    // Refresh Profile (Live Sync from Server)
     // ─────────────────────────────────────────
     const refreshProfile = useCallback(async () => {
         try {
             const res = await profileService.getProfile();
             if (res.success && res.data) {
                 setUser(res.data);
-                console.log('Profile refreshed from API:', res.data.name);
+                await storageService.saveUser(res.data);
                 return { success: true, data: res.data };
             }
 
             const userData = await storageService.getUser();
             if (userData) {
                 setUser(userData);
-                console.log('Profile refreshed from storage:', userData.name);
                 return { success: true, data: userData };
             }
             return { success: false, message: 'No user found in storage' };
@@ -97,6 +102,51 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     // ─────────────────────────────────────────
+    // Update User (Direct sync from Dashboard or APIs)
+    // ─────────────────────────────────────────
+    const updateUser = useCallback((newUserData) => {
+        if (!newUserData) return;
+        setUser((prev) => {
+            const merged = { ...(prev || {}), ...newUserData };
+            storageService.saveUser(merged);
+            return merged;
+        });
+    }, []);
+
+    // ─────────────────────────────────────────
+    // AppState Foreground Auto-Sync
+    // Whenever user returns to the app, check latest status
+    // ─────────────────────────────────────────
+    useEffect(() => {
+        const sub = AppState.addEventListener('change', (nextAppState) => {
+            if (nextAppState === 'active') {
+                refreshProfile();
+            }
+        });
+        return () => sub?.remove();
+    }, [refreshProfile]);
+
+    // ─────────────────────────────────────────
+    // Real-Time Approval Poller
+    // If pending admin approval, check every 7 seconds
+    // The instant admin approves, app unlocks immediately!
+    // ─────────────────────────────────────────
+    useEffect(() => {
+        if (!isAuthenticated) return;
+        const isActive =
+            user?.is_profile_active === true ||
+            user?.is_profile_active === 1 ||
+            user?.status === 'Active';
+        if (isActive) return;
+
+        const timer = setInterval(() => {
+            refreshProfile();
+        }, 7000);
+
+        return () => clearInterval(timer);
+    }, [isAuthenticated, user?.is_profile_active, user?.status, refreshProfile]);
+
+    // ─────────────────────────────────────────
     // Login
     // ─────────────────────────────────────────
     const login = useCallback(async (phone, otp) => {
@@ -105,7 +155,6 @@ export const AuthProvider = ({ children }) => {
             if (result.success) {
                 setIsAuthenticated(true);
                 setUser(result.data.user);
-                console.log('Login successful:', result.data.user.name);
                 return { success: true, data: result.data };
             }
             return { success: false, message: result.message };
@@ -124,7 +173,6 @@ export const AuthProvider = ({ children }) => {
             if (result.success) {
                 setIsAuthenticated(true);
                 setUser(result.data.user);
-                console.log('Registration successful:', result.data.user?.name);
                 return { success: true, data: result.data };
             }
             return { success: false, message: result.message };
@@ -155,10 +203,8 @@ export const AuthProvider = ({ children }) => {
         try {
             const result = await authService.deleteAccount();
             if (result.success) {
-                // ✅ Clear local state to trigger navigation
                 setIsAuthenticated(false);
                 setUser(null);
-                console.log('Account deleted successfully');
                 return { success: true, message: result.message };
             }
             return { success: false, message: result.message };
@@ -177,7 +223,8 @@ export const AuthProvider = ({ children }) => {
         logout,
         deleteAccount,
         checkAuthStatus,
-        refreshProfile,  // ✅ Use this after profile update
+        refreshProfile,
+        updateUser,
     };
 
     return (

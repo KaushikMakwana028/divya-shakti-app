@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
     View,
     Text,
@@ -6,25 +6,70 @@ import {
     StyleSheet,
     TouchableOpacity,
     Linking,
+    Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Header from '../components/Header';
+import API_CONFIG from '../config/api';
 
 export default function MemberDetailsScreen({ route, navigation }) {
-    const { member } = route.params;
+    const { member } = route.params || {};
+    const [imgError, setImgError] = useState(false);
+
+    const getAvatarUri = () => {
+        const raw = member?.profile_image || member?.image || member?.avatar || member?.photo;
+        if (!raw || typeof raw !== 'string' || raw === 'null' || raw === 'undefined' || raw.trim() === '') {
+            return null;
+        }
+
+        const cleanBase = API_CONFIG.BASE_URL.replace(/\/api\/?$/, '');
+
+        // If URL contains localhost or loopback IP, map to base API server domain
+        if (raw.includes('localhost') || raw.includes('127.0.0.1') || raw.includes('10.0.2.2')) {
+            const uploadsIdx = raw.indexOf('uploads/');
+            if (uploadsIdx !== -1) {
+                return `${cleanBase}/${raw.substring(uploadsIdx)}`;
+            }
+        }
+
+        // Upgrade http to https for domain
+        if (raw.startsWith('http://divyshakti.visiontechnolabs.com')) {
+            return raw.replace('http://', 'https://');
+        }
+
+        if (raw.startsWith('http://') || raw.startsWith('https://')) {
+            return raw;
+        }
+
+        const cleanPath = raw.replace(/^\/+/, '');
+        return `${cleanBase}/${cleanPath}`;
+    };
+
+    const avatarUri = getAvatarUri();
+    const memberName = member?.name || 'Member';
+    const memberColor = member?.color || '#C89738';
+    const initials = memberName
+        .split(' ')
+        .filter(Boolean)
+        .map((n) => n[0])
+        .join('')
+        .substring(0, 2)
+        .toUpperCase() || 'M';
 
     const handleCall = () => {
-        Linking.openURL(`tel:${member.phone}`);
+        if (member?.phone) Linking.openURL(`tel:${member.phone}`);
     };
 
     const handleEmail = () => {
-        Linking.openURL(`mailto:${member.email}`);
+        if (member?.email) Linking.openURL(`mailto:${member.email}`);
     };
 
     const handleWhatsApp = () => {
-        const phoneNumber = member.phone.replace(/\D/g, '');
-        Linking.openURL(`whatsapp://send?phone=${phoneNumber}`);
+        if (member?.phone) {
+            const phoneNumber = member.phone.replace(/\D/g, '');
+            Linking.openURL(`whatsapp://send?phone=${phoneNumber}`);
+        }
     };
 
     return (
@@ -37,18 +82,29 @@ export default function MemberDetailsScreen({ route, navigation }) {
             >
                 {/* Profile Card */}
                 <View style={styles.profileCard}>
-                    <View style={[styles.avatar, { backgroundColor: member.color + '18' }]}>
-                        <Text style={[styles.avatarText, { color: member.color }]}>
-                            {member.name.split(' ').map((n) => n[0]).join('')}
-                        </Text>
+                    <View style={styles.avatarWrapper}>
+                        {avatarUri && !imgError ? (
+                            <Image
+                                source={{ uri: avatarUri }}
+                                style={styles.avatarImg}
+                                resizeMode="cover"
+                                onError={() => setImgError(true)}
+                            />
+                        ) : (
+                            <View style={[styles.avatarFallback, { backgroundColor: memberColor + '18' }]}>
+                                <Text style={[styles.avatarText, { color: memberColor }]}>
+                                    {initials}
+                                </Text>
+                            </View>
+                        )}
                     </View>
 
-                    <Text style={styles.memberName}>{member.name}</Text>
+                    <Text style={styles.memberName}>{memberName}</Text>
 
-                    <View style={[styles.roleBadge, { backgroundColor: member.color + '15' }]}>
-                        <Ionicons name="star" size={11} color={member.color} />
-                        <Text style={[styles.roleText, { color: member.color }]}>
-                            {member.role}
+                    <View style={[styles.roleBadge, { backgroundColor: memberColor + '15' }]}>
+                        <Ionicons name="star" size={11} color={memberColor} />
+                        <Text style={[styles.roleText, { color: memberColor }]}>
+                            {member?.role || (member?.is_profile_active ? 'Verified Member' : 'Member')}
                         </Text>
                     </View>
 
@@ -56,18 +112,20 @@ export default function MemberDetailsScreen({ route, navigation }) {
                         <View
                             style={[
                                 styles.statusDot,
-                                { backgroundColor: member.status === 'Active' ? '#27A462' : '#9E8E93' },
+                                { backgroundColor: (member?.status === 'Active' || member?.is_profile_active) ? '#27A462' : '#9E8E93' },
                             ]}
                         />
                         <Text
                             style={[
                                 styles.statusText,
-                                { color: member.status === 'Active' ? '#27A462' : '#9E8E93' },
+                                { color: (member?.status === 'Active' || member?.is_profile_active) ? '#27A462' : '#9E8E93' },
                             ]}
                         >
-                            {member.status}
+                            {member?.status || (member?.is_profile_active ? 'Active' : 'Inactive')}
                         </Text>
-                        <Text style={styles.joinedDate}>· Joined {member.joined}</Text>
+                        <Text style={styles.joinedDate}>
+                            · Joined {member?.joined || (member?.registered_at ? new Date(member.registered_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Recently')}
+                        </Text>
                     </View>
                 </View>
 
@@ -229,13 +287,27 @@ const styles = StyleSheet.create({
         shadowRadius: 12,
         elevation: 4,
     },
-    avatar: {
+    avatarWrapper: {
+        marginBottom: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    avatarImg: {
+        width: 90,
+        height: 90,
+        borderRadius: 28,
+        borderWidth: 2,
+        borderColor: '#F0EAED',
+        backgroundColor: '#FAF7F8',
+    },
+    avatarFallback: {
         width: 90,
         height: 90,
         borderRadius: 28,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 16,
+        borderWidth: 2,
+        borderColor: '#F0EAED',
     },
     avatarText: {
         fontFamily: 'Poppins_700Bold',

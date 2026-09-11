@@ -685,9 +685,20 @@ export default function EditProfileScreen() {
                   <Text style={styles.label}>Gender *</Text>
                   <View style={styles.genderRow}>
                     {[
-                      { label: "Male", value: "male", icon: "male-outline" },
-                      { label: "Female", value: "female", icon: "female-outline" },
-                      { label: "Other", value: "other", icon: "person-outline" },
+                      {
+                        label: "Male",
+                        value: "male",
+                        icon: "male-outline",
+                        themeColor: "#2563EB",
+                        activeBg: "rgba(37, 99, 235, 0.08)",
+                      },
+                      {
+                        label: "Female",
+                        value: "female",
+                        icon: "female-outline",
+                        themeColor: "#E64A78",
+                        activeBg: "rgba(230, 74, 120, 0.08)",
+                      },
                     ].map((item) => {
                       const isSelected =
                         (form.gender || "").toLowerCase() === item.value;
@@ -696,7 +707,10 @@ export default function EditProfileScreen() {
                           key={item.value}
                           style={[
                             styles.genderOption,
-                            isSelected && styles.genderOptionSelected,
+                            isSelected && {
+                              borderColor: item.themeColor,
+                              backgroundColor: item.activeBg,
+                            },
                           ]}
                           onPress={() => updateField("gender", item.value)}
                           activeOpacity={0.8}
@@ -704,21 +718,33 @@ export default function EditProfileScreen() {
                           <View
                             style={[
                               styles.genderRadioCircle,
-                              isSelected && styles.genderRadioCircleSelected,
+                              isSelected && {
+                                borderColor: item.themeColor,
+                              },
                             ]}
                           >
-                            {isSelected && <View style={styles.genderRadioDot} />}
+                            {isSelected && (
+                              <View
+                                style={[
+                                  styles.genderRadioDot,
+                                  { backgroundColor: item.themeColor },
+                                ]}
+                              />
+                            )}
                           </View>
                           <Ionicons
                             name={item.icon}
                             size={16}
-                            color={isSelected ? "#E64A78" : "#9E8E93"}
+                            color={isSelected ? item.themeColor : "#9E8E93"}
                             style={{ marginRight: 5 }}
                           />
                           <Text
                             style={[
                               styles.genderOptionText,
-                              isSelected && styles.genderOptionTextSelected,
+                              isSelected && {
+                                color: item.themeColor,
+                                fontFamily: "Poppins_600SemiBold",
+                              },
                             ]}
                           >
                             {item.label}

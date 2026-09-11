@@ -258,6 +258,16 @@ export default function AboutUsScreen({ navigation }) {
               </View>
             </View>
           </View>
+
+          <TouchableOpacity
+            style={styles.openContactScreenBtn}
+            onPress={() => navigation.navigate('ContactUs')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="chatbubbles" size={16} color="#FFFFFF" />
+            <Text style={styles.openContactScreenBtnText}>Open Full Contact Desk</Text>
+            <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
+          </TouchableOpacity>
         </View>
 
         {/* Footer */}
@@ -600,6 +610,26 @@ const styles = StyleSheet.create({
   contactDivider: {
     height: 1,
     backgroundColor: '#F0EAED',
+  },
+  openContactScreenBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#E64A78',
+    borderRadius: 14,
+    paddingVertical: 12,
+    marginTop: 14,
+    shadowColor: '#E64A78',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  openContactScreenBtnText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 13,
+    color: '#FFFFFF',
   },
 
   /* ── Footer ── */

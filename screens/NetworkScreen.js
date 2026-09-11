@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Header from '../components/Header';
 import networkService from '../services/networkService';
 import storageService from '../services/storageService';
+import API_CONFIG from '../config/api';
 
 const COLOR_PALETTE = ['#E64A78', '#C89738', '#7B61C4', '#4A7CE6', '#0E9F6E', '#3F83F8'];
 
@@ -47,18 +48,32 @@ export default function NetworkScreen({ navigation }) {
 
       // Fetch live referrals from backend API
       const res = await networkService.getReferrals();
-      if (res.success) {
-        setReferrals(res.referrals || []);
+      if (res && res.success) {
+        const list = Array.isArray(res.referrals)
+          ? res.referrals
+          : (res.referrals && Array.isArray(res.referrals.referrals))
+          ? res.referrals.referrals
+          : [];
+        setReferrals(list);
         if (res.summary) {
           setSummary({
-            total_referrals: res.summary.total_referrals ?? res.referrals.length,
+            total_referrals: res.summary.total_referrals ?? list.length,
             active_referrals: res.summary.active_referrals ?? 0,
             levels: res.summary.levels ?? 1,
           });
+        } else {
+          setSummary({
+            total_referrals: list.length,
+            active_referrals: 0,
+            levels: 1,
+          });
         }
+      } else {
+        setReferrals([]);
       }
     } catch (err) {
       console.error('Failed to load network data:', err);
+      setReferrals([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -81,22 +96,48 @@ export default function NetworkScreen({ navigation }) {
     }
   };
 
-  const filtered = referrals.filter((m) => {
+  const safeReferrals = Array.isArray(referrals) ? referrals : [];
+
+  const filtered = safeReferrals.filter((m) => {
+    if (!m) return false;
     const term = search.toLowerCase().trim();
     if (!term) return true;
     const nameMatch = m.name && m.name.toLowerCase().includes(term);
     const phoneMatch = m.phone && m.phone.toLowerCase().includes(term);
     const emailMatch = m.email && m.email.toLowerCase().includes(term);
-    const idMatch = m.custom_id && m.custom_id.toLowerCase().includes(term);
-    return nameMatch || phoneMatch || emailMatch || idMatch;
+    const idMatch = m.custom_id && String(m.custom_id).toLowerCase().includes(term);
+    return Boolean(nameMatch || phoneMatch || emailMatch || idMatch);
   });
+
+  const getAvatarUri = (raw) => {
+    if (!raw || typeof raw !== 'string' || raw === 'null' || raw === 'undefined' || raw.trim() === '') {
+      return null;
+    }
+    const cleanBase = API_CONFIG.BASE_URL.replace(/\/api\/?$/, '');
+    if (raw.includes('localhost') || raw.includes('127.0.0.1') || raw.includes('10.0.2.2')) {
+      const uploadsIdx = raw.indexOf('uploads/');
+      if (uploadsIdx !== -1) {
+        return `${cleanBase}/${raw.substring(uploadsIdx)}`;
+      }
+    }
+    if (raw.startsWith('http://divyshakti.visiontechnolabs.com')) {
+      return raw.replace('http://', 'https://');
+    }
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      return raw;
+    }
+    const cleanPath = raw.replace(/^\/+/, '');
+    return `${cleanBase}/${cleanPath}`;
+  };
 
   const handleMemberPress = (member, index) => {
     const cardColor = COLOR_PALETTE[index % COLOR_PALETTE.length];
+    const resolvedAvatar = getAvatarUri(member.profile_image || member.image || member.avatar || member.photo);
     const memberPayload = {
       ...member,
       id: member.id,
       name: member.name || 'Member',
+      profile_image: resolvedAvatar,
       role: member.is_profile_active ? 'Verified Member' : 'Direct Referral',
       joined: member.joined_formatted || 'Recently',
       color: cardColor,
@@ -130,7 +171,7 @@ export default function NetworkScreen({ navigation }) {
         {/* Stats Banner */}
         <View style={styles.statsBanner}>
           {[
-            { label: 'Total', value: String(summary.total_referrals ?? referrals.length), icon: 'people' },
+            { label: 'Total', value: String(summary.total_referrals ?? safeReferrals.length), icon: 'people' },
             { label: 'Active', value: String(summary.active_referrals ?? 0), icon: 'checkmark-circle' },
             { label: 'Levels', value: String(summary.levels ?? 1), icon: 'layers' },
           ].map((s, i) => (
@@ -181,7 +222,7 @@ export default function NetworkScreen({ navigation }) {
         )}
 
         {/* Empty State: No Network at all */}
-        {!loading && referrals.length === 0 && (
+        {!loading && safeReferrals.length === 0 && (
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIconBox}>
               <Ionicons name="people-outline" size={44} color="#C89738" />
@@ -211,7 +252,7 @@ export default function NetworkScreen({ navigation }) {
         )}
 
         {/* Empty State: Search match failure */}
-        {!loading && referrals.length > 0 && filtered.length === 0 && (
+        {!loading && safeReferrals.length > 0 && filtered.length === 0 && (
           <View style={styles.emptyContainer}>
             <Ionicons name="search-outline" size={38} color="#9E8E93" style={{ marginBottom: 10 }} />
             <Text style={styles.emptyTitle}>No Matching Members</Text>
@@ -235,6 +276,8 @@ export default function NetworkScreen({ navigation }) {
               : 'M';
             const isActive = member.status === 'Active' || member.is_profile_active === 1;
 
+            const avatarUri = getAvatarUri(member.profile_image || member.image || member.avatar || member.photo);
+
             return (
               <TouchableOpacity
                 key={member.id || i}
@@ -242,8 +285,8 @@ export default function NetworkScreen({ navigation }) {
                 activeOpacity={0.7}
                 onPress={() => handleMemberPress(member, i)}
               >
-                {member.profile_image ? (
-                  <Image source={{ uri: member.profile_image }} style={styles.avatarImage} />
+                {avatarUri ? (
+                  <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
                 ) : (
                   <View style={[styles.avatar, { backgroundColor: cardColor + '18' }]}>
                     <Text style={[styles.avatarText, { color: cardColor }]}>{initials}</Text>

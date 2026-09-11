@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import Header from "../components/Header";
 import ProfileIncompleteModal from "../components/ProfileIncompleteModal";
 import CheckoutModal from "../components/CheckoutModal";
@@ -40,9 +41,18 @@ export default function ProductDetailsScreen({ route, navigation }) {
   const [fetchError, setFetchError] = useState(null);
 
   const { addToCart, getCartCount } = useCart();
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const [quantity, setQuantity] = useState(1);
   const [addingToCart, setAddingToCart] = useState(false);
+
+  // Silently refresh profile on screen focus
+  useFocusEffect(
+    useCallback(() => {
+      if (refreshProfile) {
+        refreshProfile();
+      }
+    }, [refreshProfile])
+  );
 
   // Checkout Modal State
   const [checkoutVisible, setCheckoutVisible] = useState(false);
@@ -162,26 +172,40 @@ export default function ProductDetailsScreen({ route, navigation }) {
       : parseInt(String(product.price || 0).replace(/[₹,]/g, "")) || 0;
   const buyNowTotal = unitPrice * quantity;
 
-  const checkProfileCompleteness = () => {
-    if (!user) return true;
+  const checkProfileCompleteness = async () => {
+    let currentUser = user;
+    const isLocallyPendingOrInactive =
+      currentUser?.is_profile_active === false ||
+      currentUser?.is_profile_active === 0 ||
+      (currentUser?.profile_completion_percentage !== undefined &&
+        Number(currentUser?.profile_completion_percentage) < 100);
+
+    if (isLocallyPendingOrInactive && refreshProfile) {
+      const fresh = await refreshProfile();
+      if (fresh?.success && fresh?.data) {
+        currentUser = fresh.data;
+      }
+    }
+
+    if (!currentUser) return true;
     const isCompleted =
-      user.is_profile_completed === true ||
-      Number(user.profile_completion_percentage) >= 100;
+      currentUser.is_profile_completed === true ||
+      Number(currentUser.profile_completion_percentage) >= 100;
 
     if (
       !isCompleted &&
-      user.profile_completion_percentage !== undefined &&
-      Number(user.profile_completion_percentage) < 100
+      currentUser.profile_completion_percentage !== undefined &&
+      Number(currentUser.profile_completion_percentage) < 100
     ) {
-      setProfileCompletionPct(Number(user.profile_completion_percentage) || 0);
-      setMissingFields(user.missing_fields || []);
+      setProfileCompletionPct(Number(currentUser.profile_completion_percentage) || 0);
+      setMissingFields(currentUser.missing_fields || []);
       setIsProfileUnderReview(false);
       setProfileModalMessage("");
       setProfileModalVisible(true);
       return false;
     }
 
-    if (isCompleted && user.is_profile_active === false) {
+    if (isCompleted && currentUser.is_profile_active === false) {
       setProfileCompletionPct(100);
       setMissingFields([]);
       setIsProfileUnderReview(true);
@@ -201,8 +225,9 @@ export default function ProductDetailsScreen({ route, navigation }) {
       return;
     }
 
-    // 1. Client-side Profile Check
-    if (!checkProfileCompleteness()) {
+    // 1. Client-side Profile Check with live sync
+    const isAllowed = await checkProfileCompleteness();
+    if (!isAllowed) {
       return;
     }
 
@@ -241,14 +266,15 @@ export default function ProductDetailsScreen({ route, navigation }) {
     }
   };
 
-  const handleBuyNow = () => {
+  const handleBuyNow = async () => {
     if (!inStock) {
       Alert.alert("Out of Stock", "This product is currently out of stock.");
       return;
     }
 
-    // 1. Client-side Profile Check
-    if (!checkProfileCompleteness()) {
+    // 1. Client-side Profile Check with live sync
+    const isAllowed = await checkProfileCompleteness();
+    if (!isAllowed) {
       return;
     }
 

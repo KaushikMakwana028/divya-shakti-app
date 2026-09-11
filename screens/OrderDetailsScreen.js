@@ -375,13 +375,13 @@ export default function OrderDetailsScreen({ route, navigation }) {
                           confirmed: "Payment verified & confirmed",
                           packed: "Item packed at warehouse",
                           out_for_delivery: "With delivery partner",
-                          delivered: "Completed successfully",
+                          delivered: "Delivered & referral rewards credited",
                         }[stepMeta.key]
                       : {
                           confirmed: "Awaiting payment verification",
                           packed: "Packing pending",
                           out_for_delivery: "Dispatch pending",
-                          delivered: "Delivery pending",
+                          delivered: "Delivery & rewards pending",
                         }[stepMeta.key];
 
                 return (
@@ -754,8 +754,7 @@ export default function OrderDetailsScreen({ route, navigation }) {
               </Text>
             </View>
             <Text style={[styles.noticeDesc, { color: "#065F46" }]}>
-              Thank you for shopping with Divya Shakti! We hope your divine idol
-              brings blessings, prosperity, and peace into your home.
+              Thank you for shopping with Divya Shakti! Your order was delivered successfully and eligible referral commissions have been credited.
             </Text>
           </View>
         )}

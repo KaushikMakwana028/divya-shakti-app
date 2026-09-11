@@ -1,20 +1,8 @@
 import axios from 'axios';
 import API_CONFIG from '../config/api';
 import storageService from './storageService';
-import { navigateResetToLogin } from '../navigation/navigationRef';
-
-// Endpoints exempt from 401 automatic redirect to avoid redirect loops
-const AUTH_EXEMPT_ROUTES = [
-    '/send_otp',
-    '/verify_otp',
-    '/send_register_otp',
-    '/register_verify_otp',
-    '/login',
-    '/register',
-];
 
 let unauthorizedHandler = null;
-let isRedirecting = false;
 
 export const setUnauthorizedHandler = (handler) => {
     unauthorizedHandler = handler;
@@ -33,51 +21,32 @@ apiClient.interceptors.request.use(
     async (config) => {
         const token = await storageService.getToken();
         if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
+            if (config.headers?.set) {
+                config.headers.set('Authorization', `Bearer ${token}`);
+            } else {
+                config.headers = config.headers || {};
+                config.headers.Authorization = `Bearer ${token}`;
+            }
         }
         return config;
     },
     (error) => Promise.reject(error)
 );
 
-// Central Response Interceptor: Global 401 silent session expiry handling
+// Central Response Interceptor: Permanent Token Policy
+// The token NEVER auto-expires or logs the user out.
+// Only explicit user action (Logout / Delete Account) clears the session.
 apiClient.interceptors.response.use(
     (response) => response,
     async (error) => {
         const status = error.response?.status;
-        const requestUrl = error.config?.url || '';
-
-        const isExempt = AUTH_EXEMPT_ROUTES.some((route) =>
-            requestUrl.toLowerCase().includes(route.toLowerCase())
-        );
-
-        // Check if token expired or invalid (matches Api.php check_auth status 401)
-        if (status === 401 && !isExempt) {
-            if (!isRedirecting) {
-                isRedirecting = true;
-
-                // Silently clear credentials from SecureStore and AsyncStorage
-                await storageService.clearAuthData();
-
-                // Notify AuthContext silently to reset state
-                if (typeof unauthorizedHandler === 'function') {
-                    try {
-                        unauthorizedHandler();
-                    } catch (cbErr) {
-                        console.error('Error in unauthorizedHandler:', cbErr);
-                    }
-                }
-
-                // Silently reset navigation to Login screen without any error dialog or toast
-                navigateResetToLogin();
-
-                // Allow future redirects after a short debounce
-                setTimeout(() => {
-                    isRedirecting = false;
-                }, 1500);
-            }
+        if (status === 401) {
+            console.warn(
+                '[apiClient] 401 received for:',
+                error.config?.url,
+                '- Permanent session maintained (no auto-logout).'
+            );
         }
-
         return Promise.reject(error);
     }
 );

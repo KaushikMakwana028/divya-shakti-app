@@ -39,7 +39,7 @@ const MENU_SECTIONS = [
   {
     title: 'Support',
     items: [
-      { icon: 'chatbubble-outline',        label: 'Contact Us',         color: '#E64A78' },
+      { icon: 'chatbubble-outline',        label: 'Contact Us',         color: '#E64A78', route: 'ContactUs' },
     ],
   },
 ];
@@ -226,19 +226,35 @@ export default function ProfileScreen() {
             </View>
 
             {currentUser?.gender ? (
-              <View style={styles.genderBadge}>
+              <View
+                style={[
+                  styles.genderBadge,
+                  currentUser.gender.toLowerCase() === 'male'
+                    ? styles.genderBadgeMale
+                    : styles.genderBadgeFemale,
+                ]}
+              >
                 <Ionicons
                   name={
                     currentUser.gender.toLowerCase() === 'female'
                       ? 'female-outline'
-                      : currentUser.gender.toLowerCase() === 'male'
-                      ? 'male-outline'
-                      : 'person-outline'
+                      : 'male-outline'
                   }
                   size={11}
-                  color="#E64A78"
+                  color={
+                    currentUser.gender.toLowerCase() === 'male'
+                      ? '#2563EB'
+                      : '#E64A78'
+                  }
                 />
-                <Text style={styles.genderBadgeText}>
+                <Text
+                  style={[
+                    styles.genderBadgeText,
+                    currentUser.gender.toLowerCase() === 'male'
+                      ? styles.genderBadgeTextMale
+                      : styles.genderBadgeTextFemale,
+                  ]}
+                >
                   {currentUser.gender.charAt(0).toUpperCase() +
                     currentUser.gender.slice(1).toLowerCase()}
                 </Text>
@@ -408,16 +424,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(230,74,120,0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(230,74,120,0.25)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
+    borderWidth: 1,
+  },
+  genderBadgeMale: {
+    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+    borderColor: 'rgba(37, 99, 235, 0.25)',
+  },
+  genderBadgeFemale: {
+    backgroundColor: 'rgba(230, 74, 120, 0.1)',
+    borderColor: 'rgba(230, 74, 120, 0.25)',
   },
   genderBadgeText: {
     fontFamily: 'Poppins_600SemiBold',
     fontSize: 12,
+  },
+  genderBadgeTextMale: {
+    color: '#2563EB',
+  },
+  genderBadgeTextFemale: {
     color: '#E64A78',
   },
   statsCard: {
