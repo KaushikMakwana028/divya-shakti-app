@@ -83,7 +83,7 @@ class OrderService {
     // ─────────────────────────────────────────
     // Verify Order Payment (Confirm & Pay)
     // POST /api/verify_order_payment
-    // Only endpoint that executes wallet deduction, stock deduction, commissions & clears cart.
+    // Executes wallet deduction, stock deduction, and clears cart (order placement).
     // ─────────────────────────────────────────
     async verifyOrderPayment(orderIds) {
         try {

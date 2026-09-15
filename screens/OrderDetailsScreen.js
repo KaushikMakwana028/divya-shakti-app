@@ -754,7 +754,7 @@ export default function OrderDetailsScreen({ route, navigation }) {
               </Text>
             </View>
             <Text style={[styles.noticeDesc, { color: "#065F46" }]}>
-              Thank you for shopping with Divya Shakti! Your order was delivered successfully and eligible referral commissions have been credited.
+              Thank you for shopping with Divya Shakti! Your order was delivered successfully.
             </Text>
           </View>
         )}

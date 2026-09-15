@@ -48,7 +48,7 @@ const FAQS = [
   {
     question: 'When are wallet rewards and commissions credited?',
     answer:
-      'Commissions and referral bonuses are automatically credited to your Divya Shakti Wallet once the referred order is marked delivered and passes the standard return window.',
+      'Referral commissions are credited directly to your Divya Shakti Wallet once your referred member account is verified and activated by the admin.',
   },
   {
     question: 'What is your return & replacement policy?',

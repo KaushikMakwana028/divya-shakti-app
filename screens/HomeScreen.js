@@ -105,6 +105,21 @@ export default function HomeScreen({ navigation }) {
   // Share Referral
   // ─────────────────────────────────────────
   const handleShareReferral = async () => {
+    const isProfileActive = Boolean(
+      dashboardData?.referral?.is_referral_active ??
+      dashboardData?.profile_progression_bar?.is_profile_active ??
+      dashboardData?.user?.is_profile_active ??
+      user?.is_profile_active
+    );
+
+    if (!isProfileActive) {
+      Alert.alert(
+        "Referral Code Inactive",
+        "Your referral code is generated, but other users cannot use it until your profile is approved and activated by Admin."
+      );
+      return;
+    }
+
     const referral = dashboardData?.referral;
     const refCode = referral?.referral_code || user?.referral_code;
     if (!refCode) return;
@@ -933,16 +948,24 @@ export default function HomeScreen({ navigation }) {
         {referralCode ? (
           <View style={styles.promoBanner}>
             <View style={styles.promoLeft}>
-              <Text style={styles.promoEyebrow}>Refer & Earn</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <Text style={styles.promoEyebrow}>Refer & Earn</Text>
+                {!isProfileActive && (
+                  <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#FDE68A' }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#D97706' }}>Pending Activation</Text>
+                  </View>
+                )}
+              </View>
               <Text style={styles.promoHeadline}>
                 Referral Code: {referralCode}
               </Text>
               <Text style={styles.promoSub}>
-                Share your referral link with friends and team to earn
-                generational commissions.
+                {isProfileActive
+                  ? "Share your referral code with friends and team to earn direct wallet commissions when their accounts are activated."
+                  : "Your referral code is generated, but other users can only register with it once your profile is approved and activated by Admin."}
               </Text>
               <TouchableOpacity
-                style={styles.promoBtn}
+                style={[styles.promoBtn, !isProfileActive && { opacity: 0.7 }]}
                 onPress={handleShareReferral}
                 activeOpacity={0.8}
               >
@@ -951,7 +974,9 @@ export default function HomeScreen({ navigation }) {
                   size={14}
                   color="#C89738"
                 />
-                <Text style={styles.promoBtnText}>Share & Invite</Text>
+                <Text style={styles.promoBtnText}>
+                  {isProfileActive ? "Share & Invite" : "Share (Inactive)"}
+                </Text>
               </TouchableOpacity>
             </View>
             <View style={styles.promoRight}>

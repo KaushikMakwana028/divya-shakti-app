@@ -10,6 +10,7 @@ import {
   RefreshControl,
   Image,
   Share,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -85,6 +86,14 @@ export default function NetworkScreen({ navigation }) {
   }, [fetchNetwork]);
 
   const handleShareReferral = async () => {
+    const isProfileActive = currentUser?.is_profile_active === 1 || currentUser?.is_profile_active === true;
+    if (!isProfileActive) {
+      Alert.alert(
+        "Referral Code Inactive",
+        "Your referral code is generated, but other users cannot use it until your profile is approved and activated by Admin."
+      );
+      return;
+    }
     const code = currentUser?.referral_code;
     if (!code) return;
     try {
@@ -234,17 +243,26 @@ export default function NetworkScreen({ navigation }) {
 
             {currentUser?.referral_code ? (
               <View style={styles.codeShareCard}>
-                <Text style={styles.codeLabel}>Your Referral Code</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <Text style={styles.codeLabel}>Your Referral Code</Text>
+                  {!(currentUser?.is_profile_active === 1 || currentUser?.is_profile_active === true) && (
+                    <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#FDE68A' }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#D97706' }}>Pending Activation</Text>
+                    </View>
+                  )}
+                </View>
                 <View style={styles.codeRow}>
                   <Text style={styles.codeValue}>{currentUser.referral_code}</Text>
                 </View>
                 <TouchableOpacity
-                  style={styles.shareBtn}
+                  style={[styles.shareBtn, !(currentUser?.is_profile_active === 1 || currentUser?.is_profile_active === true) && { opacity: 0.7 }]}
                   activeOpacity={0.8}
                   onPress={handleShareReferral}
                 >
                   <Ionicons name="share-social-outline" size={16} color="#FFFFFF" />
-                  <Text style={styles.shareBtnText}>Share Referral Code</Text>
+                  <Text style={styles.shareBtnText}>
+                    {(currentUser?.is_profile_active === 1 || currentUser?.is_profile_active === true) ? "Share Referral Code" : "Share (Inactive)"}
+                  </Text>
                 </TouchableOpacity>
               </View>
             ) : null}
