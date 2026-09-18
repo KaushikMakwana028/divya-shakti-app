@@ -20,10 +20,20 @@ class ProfileService {
                 };
             }
 
-            const response = await this.api.get('/get_profile');
+            // Concurrently get profile and pending withdrawal hold amount
+            const [response, pendingAmount] = await Promise.all([
+                this.api.get('/get_profile'),
+                storageService.getPendingWithdrawAmount(),
+            ]);
+
             if (response.data && response.data.status) {
                 const userData = response.data.data;
                 if (userData) {
+                    const rawBal = Number(userData.wallet_balance) || 0;
+                    const holdAmount = Math.max(0, Number(pendingAmount) || 0);
+                    userData.raw_wallet_balance = rawBal;
+                    userData.wallet_balance = Math.max(0, rawBal - holdAmount);
+                    userData.pending_withdraw_amount = holdAmount;
                     await storageService.saveUser(userData);
                 }
                 return {

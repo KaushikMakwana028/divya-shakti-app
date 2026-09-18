@@ -18,8 +18,8 @@ import { Ionicons } from "@expo/vector-icons";
 import authService from "../services/authService";
 import { useAuth } from "../contexts/AuthContext";
 
-const LOGO_URL =
-  "https://images.unsplash.com/photo-1620288627223-53302f4e8c74?w=400&h=400&fit=crop";
+// Import local logo
+const logo = require("../assets/logo.png");
 
 export default function OtpVerifyScreen({ navigation, route }) {
   const {
@@ -178,7 +178,7 @@ export default function OtpVerifyScreen({ navigation, route }) {
           <View style={styles.logoSection}>
             <View style={styles.logoWrapper}>
               <Image
-                source={{ uri: LOGO_URL }}
+                source={logo}
                 style={styles.logoImage}
                 resizeMode="cover"
               />
@@ -303,6 +303,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 20,
     elevation: 10,
+    backgroundColor: "#FFFFFF",
   },
   logoImage: {
     width: "100%",

@@ -6,6 +6,7 @@ import AppNavigator from './navigation/AppNavigator';
 import { StatusBar } from 'expo-status-bar';
 import { CartProvider } from './contexts/CartContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -26,13 +27,15 @@ export default function App() {
   if (!fontsLoaded) return null;
 
   return (
-    <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-      <StatusBar style="dark" backgroundColor="#FAF7F8" />
-      <AuthProvider>
-        <CartProvider>
-          <AppNavigator />
-        </CartProvider>
-      </AuthProvider>
-    </View>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics} style={{ flex: 1 }}>
+      <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+        <StatusBar style="dark" backgroundColor="#FAF7F8" />
+        <AuthProvider>
+          <CartProvider>
+            <AppNavigator />
+          </CartProvider>
+        </AuthProvider>
+      </View>
+    </SafeAreaProvider>
   );
 }

@@ -17,6 +17,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import Header from '../components/Header';
 import orderService from '../services/orderService';
 import walletService from '../services/walletService';
+import storageService from '../services/storageService';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -157,6 +158,26 @@ export default function CheckoutReviewScreen({ route, navigation }) {
           setOrderSummary(d.order_summary || null);
           setShippingAddresses(d.shipping_addresses || []);
           setSelectedAddress(d.selected_address || null);
+
+          // Deduct pending withdrawal holds so checkout cannot use pending withdrawal funds
+          if (d.wallet_info) {
+            const pendingAmt = await storageService.getPendingWithdrawAmount().catch(() => 0);
+            if (pendingAmt > 0) {
+              const rawBal = Number(d.wallet_info.current_wallet_balance || 0);
+              const availBal = Math.max(0, rawBal - pendingAmt);
+              const ordTotal = Number(d.wallet_info.order_total || 0);
+              const isSuff = availBal >= ordTotal;
+              const def = isSuff ? 0 : Math.round((ordTotal - availBal) * 100) / 100;
+              d.wallet_info.current_wallet_balance = availBal;
+              d.wallet_info.is_wallet_sufficient = isSuff;
+              d.wallet_info.balance_after_payment = isSuff ? availBal - ordTotal : 0;
+              d.wallet_info.wallet_deficit = def;
+              d.wallet_info.message = isSuff
+                ? `Wallet balance is sufficient. Confirming will deduct ₹${ordTotal.toFixed(2)}.`
+                : `Insufficient wallet balance. You need ₹${def.toFixed(2)} more. Please add funds.`;
+            }
+          }
+
           setWalletInfo(d.wallet_info || null);
         } else {
           // Exact API error message handling

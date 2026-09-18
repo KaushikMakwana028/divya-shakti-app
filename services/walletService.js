@@ -8,7 +8,8 @@ class WalletService {
 
     // ─────────────────────────────────────────
     // Get Current Wallet Balance
-    // GET /api/get_wallet_balance
+    // ─────────────────────────────────────────
+    // Get Current Wallet Balance (with pending withdrawal hold deducted)
     // ─────────────────────────────────────────
     async getWalletBalance() {
         try {
@@ -17,17 +18,58 @@ class WalletService {
                 return {
                     success: false,
                     balance: 0,
+                    rawBalance: 0,
+                    pendingAmount: 0,
                     message: 'User is not logged in',
                 };
             }
 
+            // Primary: fetch /get_withdraw_info which contains both raw DB balance and live pending withdrawal total
+            try {
+                const withdrawRes = await this.api.get('/get_withdraw_info');
+                if (withdrawRes.data && withdrawRes.data.status) {
+                    const data = withdrawRes.data.data;
+                    const rawBalance = Number(data?.wallet_balance) || 0;
+                    const pendingAmount = Number(data?.pending_amount) || 0;
+                    const availableBalance = Math.max(0, rawBalance - pendingAmount);
+
+                    // Sync storage
+                    await storageService.setPendingWithdrawAmount(pendingAmount);
+
+                    return {
+                        success: true,
+                        balance: availableBalance,
+                        rawBalance: rawBalance,
+                        pendingAmount: pendingAmount,
+                        data: {
+                            ...data,
+                            wallet_balance: availableBalance,
+                            raw_wallet_balance: rawBalance,
+                            pending_withdraw_amount: pendingAmount,
+                        },
+                        message: withdrawRes.data.message || 'Wallet balance retrieved successfully',
+                    };
+                }
+            } catch (_) {}
+
+            // Fallback: fetch /get_wallet_balance and deduct locally cached pending amount
             const response = await this.api.get('/get_wallet_balance');
             if (response.data && response.data.status) {
-                const balance = Number(response.data.data?.wallet_balance) || 0;
+                const rawBalance = Number(response.data.data?.wallet_balance) || 0;
+                const pendingAmount = await storageService.getPendingWithdrawAmount();
+                const availableBalance = Math.max(0, rawBalance - pendingAmount);
+
                 return {
                     success: true,
-                    balance: balance,
-                    data: response.data.data,
+                    balance: availableBalance,
+                    rawBalance: rawBalance,
+                    pendingAmount: pendingAmount,
+                    data: {
+                        ...response.data.data,
+                        wallet_balance: availableBalance,
+                        raw_wallet_balance: rawBalance,
+                        pending_withdraw_amount: pendingAmount,
+                    },
                     message: response.data.message || 'Wallet balance retrieved successfully',
                 };
             }
@@ -35,13 +77,18 @@ class WalletService {
             return {
                 success: false,
                 balance: 0,
+                rawBalance: 0,
+                pendingAmount: 0,
                 message: response.data?.message || 'Failed to fetch wallet balance',
             };
         } catch (error) {
             console.error('WalletService getWalletBalance error:', error.response?.data || error.message);
+            const cachedPending = await storageService.getPendingWithdrawAmount().catch(() => 0);
             return {
                 success: false,
                 balance: 0,
+                rawBalance: 0,
+                pendingAmount: cachedPending,
                 message: error.response?.data?.message || error.message || 'Failed to fetch wallet balance',
             };
         }

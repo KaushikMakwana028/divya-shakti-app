@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import addressService from '../services/addressService';
 import walletService from '../services/walletService';
 import orderService from '../services/orderService';
+import storageService from '../services/storageService';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
 import ProfileIncompleteModal from './ProfileIncompleteModal';
@@ -91,8 +92,9 @@ export default function CheckoutModal({
         }
 
         const wallBal = cData.wallet_payment_preview?.current_wallet_balance;
+        const pendingAmt = await storageService.getPendingWithdrawAmount().catch(() => 0);
         if (wallBal !== undefined && wallBal !== null) {
-          setWalletBalance(Number(wallBal));
+          setWalletBalance(Math.max(0, Number(wallBal) - pendingAmt));
         } else if (user?.wallet_balance !== undefined) {
           setWalletBalance(Number(user.wallet_balance || 0));
         }

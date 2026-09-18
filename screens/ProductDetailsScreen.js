@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,11 @@ import {
   Image,
   ActivityIndicator,
   RefreshControl,
+  Modal,
+  Dimensions,
+  StatusBar,
+  Animated,
+  PanResponder,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,6 +24,8 @@ import CheckoutModal from "../components/CheckoutModal";
 import { useCart } from "../contexts/CartContext";
 import { useAuth } from "../contexts/AuthContext";
 import productService from "../services/productService";
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export default function ProductDetailsScreen({ route, navigation }) {
   const initialProduct = route.params?.product;
@@ -64,6 +71,223 @@ export default function ProductDetailsScreen({ route, navigation }) {
   const [isProfileUnderReview, setIsProfileUnderReview] = useState(false);
   const [profileModalMessage, setProfileModalMessage] = useState("");
 
+  // Product Gallery & Zoom Modal State
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [zoomModalVisible, setZoomModalVisible] = useState(false);
+  const [zoomScale, setZoomScale] = useState(1);
+
+  // Interactive Pinch & Pan Gesture Refs
+  const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const scale = useRef(new Animated.Value(1)).current;
+  const currentScale = useRef(1);
+  const currentPan = useRef({ x: 0, y: 0 });
+  const initialPinchDist = useRef(null);
+  const initialPinchScale = useRef(1);
+  const lastTap = useRef(0);
+
+  // Keep ref values in sync with Animated values
+  useEffect(() => {
+    const panId = pan.addListener((value) => {
+      currentPan.current = value;
+    });
+    const scaleId = scale.addListener((value) => {
+      currentScale.current = value.value;
+    });
+    return () => {
+      pan.removeListener(panId);
+      scale.removeListener(scaleId);
+    };
+  }, [pan, scale]);
+
+  const resetZoom = useCallback(() => {
+    currentScale.current = 1;
+    currentPan.current = { x: 0, y: 0 };
+    setZoomScale(1);
+    pan.setValue({ x: 0, y: 0 });
+    Animated.parallel([
+      Animated.timing(scale, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(pan, {
+        toValue: { x: 0, y: 0 },
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [scale, pan]);
+
+  const setZoomLevel = useCallback(
+    (targetScale) => {
+      const clamped = Math.max(1, Math.min(Number(targetScale.toFixed(1)), 4));
+      currentScale.current = clamped;
+      setZoomScale(clamped);
+      if (clamped <= 1) {
+        currentPan.current = { x: 0, y: 0 };
+        Animated.parallel([
+          Animated.spring(scale, { toValue: 1, useNativeDriver: true }),
+          Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: true }),
+        ]).start();
+      } else {
+        Animated.spring(scale, { toValue: clamped, useNativeDriver: true }).start();
+      }
+    },
+    [scale, pan]
+  );
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: (_, gestureState) => {
+          return gestureState.numberActiveTouches >= 2 || currentScale.current > 1;
+        },
+        onPanResponderGrant: (evt, gestureState) => {
+          const touches = evt.nativeEvent.touches;
+          if (touches && touches.length >= 2) {
+            const dist = Math.hypot(
+              touches[0].pageX - touches[1].pageX,
+              touches[0].pageY - touches[1].pageY
+            );
+            initialPinchDist.current = dist;
+            initialPinchScale.current = currentScale.current;
+          } else if (touches && touches.length === 1) {
+            const now = Date.now();
+            if (now - lastTap.current < 300) {
+              lastTap.current = 0;
+              if (currentScale.current > 1.2) {
+                resetZoom();
+              } else {
+                setZoomLevel(2.5);
+              }
+              return;
+            }
+            lastTap.current = now;
+
+            pan.setOffset({
+              x: currentPan.current.x,
+              y: currentPan.current.y,
+            });
+            pan.setValue({ x: 0, y: 0 });
+          }
+        },
+        onPanResponderMove: (evt, gestureState) => {
+          const touches = evt.nativeEvent.touches;
+          if (touches && touches.length >= 2) {
+            const dist = Math.hypot(
+              touches[0].pageX - touches[1].pageX,
+              touches[0].pageY - touches[1].pageY
+            );
+            if (initialPinchDist.current && initialPinchDist.current > 0) {
+              const factor = dist / initialPinchDist.current;
+              const newScale = Math.max(1, Math.min(initialPinchScale.current * factor, 4.5));
+              currentScale.current = newScale;
+              scale.setValue(newScale);
+              setZoomScale(Number(newScale.toFixed(1)));
+            }
+          } else if (touches && touches.length === 1 && currentScale.current > 1) {
+            pan.setValue({ x: gestureState.dx, y: gestureState.dy });
+          }
+        },
+        onPanResponderRelease: () => {
+          initialPinchDist.current = null;
+          pan.flattenOffset();
+
+          if (currentScale.current <= 1.05) {
+            resetZoom();
+            return;
+          }
+
+          const maxPanX = ((currentScale.current - 1) * SCREEN_WIDTH) / 2;
+          const maxPanY = ((currentScale.current - 1) * (SCREEN_HEIGHT * 0.65)) / 2;
+
+          let targetX = currentPan.current.x;
+          let targetY = currentPan.current.y;
+          let needsSpring = false;
+
+          if (targetX > maxPanX) {
+            targetX = maxPanX;
+            needsSpring = true;
+          } else if (targetX < -maxPanX) {
+            targetX = -maxPanX;
+            needsSpring = true;
+          }
+
+          if (targetY > maxPanY) {
+            targetY = maxPanY;
+            needsSpring = true;
+          } else if (targetY < -maxPanY) {
+            targetY = -maxPanY;
+            needsSpring = true;
+          }
+
+          currentPan.current = { x: targetX, y: targetY };
+
+          if (needsSpring) {
+            Animated.spring(pan, {
+              toValue: { x: targetX, y: targetY },
+              useNativeDriver: true,
+              bounciness: 4,
+            }).start();
+          }
+        },
+        onPanResponderTerminate: () => {
+          initialPinchDist.current = null;
+          pan.flattenOffset();
+          if (currentScale.current <= 1.05) {
+            resetZoom();
+          }
+        },
+      }),
+    [pan, scale, resetZoom, setZoomLevel]
+  );
+
+  // Extract all gallery images (default image first)
+  const galleryImages = useMemo(() => {
+    if (Array.isArray(product?.gallery) && product.gallery.length > 0) {
+      return product.gallery
+        .map((g, idx) => {
+          if (typeof g === "string") {
+            return { id: idx, uri: g, is_default: idx === 0 };
+          }
+          return {
+            id: g.id || idx,
+            uri: g.url || g.image,
+            is_default: Boolean(g.is_default && Number(g.is_default) === 1),
+          };
+        })
+        .filter((item) => Boolean(item.uri));
+    }
+    if (Array.isArray(product?.images) && product.images.length > 0) {
+      return product.images
+        .map((img, idx) => {
+          if (typeof img === "string") {
+            return { id: idx, uri: img, is_default: idx === 0 };
+          }
+          return {
+            id: img.id || idx,
+            uri: img.url || img.image || img.uri,
+            is_default: Boolean(img.is_default && Number(img.is_default) === 1),
+          };
+        })
+        .filter((item) => Boolean(item.uri));
+    }
+    const singleImage = product?.image || product?.product_image;
+    if (singleImage) {
+      return [{ id: 1, uri: singleImage, is_default: true }];
+    }
+    return [];
+  }, [product]);
+
+  const currentImageUri =
+    galleryImages[activeImageIndex]?.uri ||
+    product?.image ||
+    product?.product_image ||
+    null;
+
+  const currentIsDefault = galleryImages[activeImageIndex]?.is_default;
+
   const fetchProductDetails = useCallback(
     async (isRefresh = false) => {
       if (!productId) {
@@ -103,12 +327,16 @@ export default function ProductDetailsScreen({ route, navigation }) {
 
   useEffect(() => {
     if (productId) {
+      setActiveImageIndex(0);
+      setZoomScale(1);
       fetchProductDetails();
     }
   }, [productId]);
 
   useEffect(() => {
     if (route.params?.product) {
+      setActiveImageIndex(0);
+      setZoomScale(1);
       setProduct((prev) => ({
         ...(prev || {}),
         ...route.params.product,
@@ -312,10 +540,19 @@ export default function ProductDetailsScreen({ route, navigation }) {
         }
       >
         {/* Product Image Section */}
-        <View style={styles.imageCard}>
-          {product.image || product.product_image ? (
+        <TouchableOpacity
+          style={styles.imageCard}
+          activeOpacity={currentImageUri ? 0.92 : 1}
+          onPress={() => {
+            if (currentImageUri) {
+              resetZoom();
+              setZoomModalVisible(true);
+            }
+          }}
+        >
+          {currentImageUri ? (
             <Image
-              source={{ uri: product.image || product.product_image }}
+              source={{ uri: currentImageUri }}
               style={styles.productImage}
               resizeMode="contain"
             />
@@ -329,6 +566,31 @@ export default function ProductDetailsScreen({ route, navigation }) {
             </View>
           )}
 
+          {/* Role badge: Default vs Secondary */}
+          {galleryImages.length > 0 && currentImageUri && (
+            <View
+              style={[
+                styles.imageRoleBadge,
+                !currentIsDefault && styles.imageRoleBadgeSecondary,
+              ]}
+            >
+              <Ionicons
+                name={currentIsDefault ? "star" : "images-outline"}
+                size={11}
+                color={currentIsDefault ? "#B45309" : "#4B5563"}
+              />
+              <Text
+                style={[
+                  styles.imageRoleText,
+                  !currentIsDefault && styles.imageRoleTextSecondary,
+                ]}
+              >
+                {currentIsDefault ? "Default Image" : "Secondary"}
+              </Text>
+            </View>
+          )}
+
+          {/* Stock Tag Top-Right */}
           {inStock ? (
             <View style={styles.stockTag}>
               <View style={styles.stockTagDot} />
@@ -339,7 +601,65 @@ export default function ProductDetailsScreen({ route, navigation }) {
               <Text style={styles.stockTagText}>Out of Stock</Text>
             </View>
           )}
-        </View>
+
+          {/* Bottom Card Controls / Indicators */}
+          {currentImageUri && (
+            <View style={styles.imageCardBottomRow}>
+              {galleryImages.length > 1 ? (
+                <View style={styles.imageIndexPill}>
+                  <Ionicons name="images" size={12} color="#FFFFFF" />
+                  <Text style={styles.imageIndexPillText}>
+                    {activeImageIndex + 1} / {galleryImages.length}
+                  </Text>
+                </View>
+              ) : (
+                <View />
+              )}
+
+              <View style={styles.zoomPromptBadge}>
+                <Ionicons name="scan-outline" size={12} color="#FFFFFF" />
+                <Text style={styles.zoomPromptText}>Tap to Zoom</Text>
+              </View>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Thumbnail Selector Strip (if multiple gallery images exist) */}
+        {galleryImages.length > 1 && (
+          <View style={styles.thumbnailStripWrapper}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.thumbnailStrip}
+            >
+              {galleryImages.map((item, idx) => {
+                const isSelected = idx === activeImageIndex;
+                return (
+                  <TouchableOpacity
+                    key={item.id || idx}
+                    activeOpacity={0.75}
+                    onPress={() => setActiveImageIndex(idx)}
+                    style={[
+                      styles.thumbnailItem,
+                      isSelected && styles.thumbnailItemActive,
+                    ]}
+                  >
+                    <Image
+                      source={{ uri: item.uri }}
+                      style={styles.thumbnailImage}
+                      resizeMode="cover"
+                    />
+                    {item.is_default && (
+                      <View style={styles.thumbnailDefaultDot}>
+                        <Ionicons name="star" size={7} color="#FFFFFF" />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
 
         {/* Product Info */}
         <View style={styles.infoSection}>
@@ -533,6 +853,212 @@ export default function ProductDetailsScreen({ route, navigation }) {
           navigation.navigate("EditProfile");
         }}
       />
+
+      {/* Fullscreen Product Gallery & Zoom Modal */}
+      <Modal
+        visible={zoomModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          resetZoom();
+          setZoomModalVisible(false);
+        }}
+        statusBarTranslucent={true}
+      >
+        <View style={styles.modalOverlay}>
+          <StatusBar barStyle="light-content" backgroundColor="#0B0B0F" />
+
+          {/* Modal Top Header */}
+          <SafeAreaView edges={["top"]} style={styles.modalHeaderSafe}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => {
+                  resetZoom();
+                  setZoomModalVisible(false);
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="close" size={22} color="#FFFFFF" />
+              </TouchableOpacity>
+
+              <View style={styles.modalHeaderTitleWrap}>
+                <Text style={styles.modalCounterText}>
+                  {galleryImages.length > 0
+                    ? `${activeImageIndex + 1} of ${galleryImages.length}`
+                    : "1 of 1"}
+                </Text>
+                {currentIsDefault ? (
+                  <View style={styles.modalDefaultPill}>
+                    <Ionicons name="star" size={10} color="#FBBF24" />
+                    <Text style={styles.modalDefaultPillText}>Default Image</Text>
+                  </View>
+                ) : (
+                  <View style={styles.modalSecondaryPill}>
+                    <Ionicons name="images-outline" size={10} color="#9CA3AF" />
+                    <Text style={styles.modalSecondaryPillText}>Secondary Image</Text>
+                  </View>
+                )}
+              </View>
+
+              <TouchableOpacity
+                style={styles.modalResetBtn}
+                onPress={resetZoom}
+                activeOpacity={0.8}
+                title="Reset Zoom"
+              >
+                <Ionicons name="contract-outline" size={18} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+
+          {/* Main Zoomable & Moveable Image Viewport */}
+          <View style={styles.zoomContainer}>
+            {/* Gesture Area for Image Zoom, Unzoom & Drag */}
+            <View style={StyleSheet.absoluteFill} {...panResponder.panHandlers}>
+              <View style={styles.zoomImageWrapper} pointerEvents="none">
+                {currentImageUri ? (
+                  <Animated.Image
+                    source={{ uri: currentImageUri }}
+                    style={[
+                      styles.modalMainImage,
+                      {
+                        transform: [
+                          { translateX: pan.x },
+                          { translateY: pan.y },
+                          { scale: scale },
+                        ],
+                      },
+                    ]}
+                    resizeMode="contain"
+                  />
+                ) : null}
+              </View>
+            </View>
+
+            {/* Floating Gesture Hint */}
+            <View style={styles.zoomGestureHint} pointerEvents="none">
+              <Ionicons
+                name="finger-print-outline"
+                size={13}
+                color="rgba(255,255,255,0.7)"
+              />
+              <Text style={styles.zoomGestureHintText}>
+                {zoomScale > 1.05
+                  ? "Drag with finger to explore • Double tap to reset"
+                  : "Pinch with 2 fingers to zoom • Drag to explore"}
+              </Text>
+            </View>
+
+            {/* Left & Right Navigation Arrows */}
+            {galleryImages.length > 1 && zoomScale <= 1.15 && (
+              <>
+                {activeImageIndex > 0 && (
+                  <TouchableOpacity
+                    style={[styles.arrowBtn, styles.arrowLeft]}
+                    onPress={() => {
+                      setActiveImageIndex((prev) => Math.max(0, prev - 1));
+                      resetZoom();
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
+                  </TouchableOpacity>
+                )}
+
+                {activeImageIndex < galleryImages.length - 1 && (
+                  <TouchableOpacity
+                    style={[styles.arrowBtn, styles.arrowRight]}
+                    onPress={() => {
+                      setActiveImageIndex((prev) =>
+                        Math.min(galleryImages.length - 1, prev + 1)
+                      );
+                      resetZoom();
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="chevron-forward" size={24} color="#FFFFFF" />
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
+
+            {/* Floating Zoom Controls (+ / - / 1x) */}
+            <View style={styles.floatingZoomBar}>
+              <TouchableOpacity
+                style={styles.floatingZoomBtn}
+                onPress={() => setZoomLevel(zoomScale + 0.5)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="add" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+              <View style={styles.floatingZoomDivider} />
+              <TouchableOpacity
+                style={styles.floatingZoomBtn}
+                onPress={() => setZoomLevel(zoomScale - 0.5)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="remove" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+              <View style={styles.floatingZoomDivider} />
+              <TouchableOpacity
+                style={styles.floatingZoomBtn}
+                onPress={resetZoom}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.floatingZoomText}>
+                  {zoomScale <= 1 ? "1x" : `${zoomScale}x`}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Bottom Thumbnail Strip for Switching Product Images */}
+          {galleryImages.length > 1 && (
+            <SafeAreaView edges={["bottom"]} style={styles.modalBottomSafe}>
+              <View style={styles.modalThumbnailWrapper}>
+                <Text style={styles.modalThumbnailTitle}>
+                  Product Photos ({galleryImages.length})
+                </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.modalThumbnailStrip}
+                >
+                  {galleryImages.map((img, idx) => {
+                    const isSelected = idx === activeImageIndex;
+                    return (
+                      <TouchableOpacity
+                        key={img.id || idx}
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          setActiveImageIndex(idx);
+                          resetZoom();
+                        }}
+                        style={[
+                          styles.modalThumbItem,
+                          isSelected && styles.modalThumbItemActive,
+                        ]}
+                      >
+                        <Image
+                          source={{ uri: img.uri }}
+                          style={styles.modalThumbImage}
+                          resizeMode="cover"
+                        />
+                        {img.is_default && (
+                          <View style={styles.modalThumbStarBadge}>
+                            <Ionicons name="star" size={8} color="#FFFFFF" />
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            </SafeAreaView>
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -648,6 +1174,334 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins_600SemiBold",
     fontSize: 11,
     color: "#FFFFFF",
+  },
+
+  /* ── Image Role Badges & Bottom Card Controls ── */
+  imageRoleBadge: {
+    position: "absolute",
+    top: 16,
+    left: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+  },
+  imageRoleBadgeSecondary: {
+    backgroundColor: "#F3F4F6",
+    borderColor: "#E5E7EB",
+  },
+  imageRoleText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 10,
+    color: "#B45309",
+  },
+  imageRoleTextSecondary: {
+    color: "#4B5563",
+  },
+  imageCardBottomRow: {
+    position: "absolute",
+    bottom: 12,
+    left: 14,
+    right: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  imageIndexPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(15, 15, 20, 0.72)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  imageIndexPillText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 11,
+    color: "#FFFFFF",
+  },
+  zoomPromptBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(230, 74, 120, 0.9)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    shadowColor: "#E64A78",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  zoomPromptText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 10.5,
+    color: "#FFFFFF",
+  },
+
+  /* ── Horizontal Thumbnail Strip ── */
+  thumbnailStripWrapper: {
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  thumbnailStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 4,
+  },
+  thumbnailItem: {
+    width: 60,
+    height: 60,
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 2,
+    borderColor: "#F0EAED",
+    overflow: "hidden",
+    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  thumbnailItemActive: {
+    borderColor: "#E64A78",
+    borderWidth: 2.5,
+    transform: [{ scale: 1.05 }],
+  },
+  thumbnailImage: {
+    width: "100%",
+    height: "100%",
+  },
+  thumbnailDefaultDot: {
+    position: "absolute",
+    top: 3,
+    right: 3,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#F59E0B",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  /* ── Fullscreen Zoom Modal Styles ── */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "#0B0B0F",
+  },
+  modalHeaderSafe: {
+    backgroundColor: "rgba(11, 11, 15, 0.95)",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.08)",
+  },
+  modalCloseBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalHeaderTitleWrap: {
+    alignItems: "center",
+    gap: 3,
+  },
+  modalCounterText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 14,
+    color: "#FFFFFF",
+  },
+  modalDefaultPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(245, 158, 11, 0.2)",
+    borderColor: "rgba(245, 158, 11, 0.4)",
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  modalDefaultPillText: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 9.5,
+    color: "#FBBF24",
+  },
+  modalSecondaryPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  modalSecondaryPillText: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 9.5,
+    color: "#9CA3AF",
+  },
+  modalResetBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  zoomContainer: {
+    flex: 1,
+    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+    backgroundColor: "#0B0B0F",
+  },
+  zoomImageWrapper: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    width: SCREEN_WIDTH,
+    height: "100%",
+  },
+  modalMainImage: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT * 0.65,
+  },
+  zoomGestureHint: {
+    position: "absolute",
+    top: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(20, 20, 26, 0.75)",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    zIndex: 5,
+  },
+  zoomGestureHintText: {
+    fontFamily: "Poppins_400Regular",
+    fontSize: 11,
+    color: "rgba(255, 255, 255, 0.8)",
+  },
+  arrowBtn: {
+    position: "absolute",
+    top: "50%",
+    marginTop: -22,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(20, 20, 26, 0.75)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.15)",
+    zIndex: 10,
+  },
+  arrowLeft: {
+    left: 12,
+  },
+  arrowRight: {
+    right: 12,
+  },
+  floatingZoomBar: {
+    position: "absolute",
+    bottom: 20,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(20, 20, 26, 0.88)",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.15)",
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 5,
+    zIndex: 10,
+  },
+  floatingZoomBtn: {
+    width: 38,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  floatingZoomDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+  },
+  floatingZoomText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 12,
+    color: "#FFFFFF",
+  },
+  modalBottomSafe: {
+    backgroundColor: "rgba(11, 11, 15, 0.95)",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.08)",
+  },
+  modalThumbnailWrapper: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  modalThumbnailTitle: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 11,
+    color: "#9CA3AF",
+    marginBottom: 8,
+  },
+  modalThumbnailStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  modalThumbItem: {
+    width: 54,
+    height: 54,
+    borderRadius: 10,
+    backgroundColor: "#1F2937",
+    borderWidth: 2,
+    borderColor: "transparent",
+    overflow: "hidden",
+    position: "relative",
+  },
+  modalThumbItemActive: {
+    borderColor: "#E64A78",
+  },
+  modalThumbImage: {
+    width: "100%",
+    height: "100%",
+  },
+  modalThumbStarBadge: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#F59E0B",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   /* ── Info Section ── */

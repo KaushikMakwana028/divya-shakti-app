@@ -8,6 +8,7 @@ import {
   Alert,
   Image,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 import profileService from '../services/profileService';
 import homeService from '../services/homeService';
 import orderService from '../services/orderService';
+import storageService from '../services/storageService';
 
 const MENU_SECTIONS = [
   {
@@ -23,6 +25,7 @@ const MENU_SECTIONS = [
     items: [
       { icon: 'person-outline',        label: 'Edit Profile',       color: '#E64A78', route: 'EditProfile' },
       { icon: 'wallet-outline',         label: 'My Wallet',          color: '#C89738', route: 'Wallet' },
+      { icon: 'arrow-up-circle-outline', label: 'Withdraw Money',    color: '#0E9F6E', route: 'Withdraw' },
       { icon: 'location-outline',       label: 'My Addresses',       color: '#27A462', route: 'Addresses' },
       { icon: 'document-text-outline',  label: 'My Orders',          color: '#7B61C4', route: 'Orders' },
     ],
@@ -32,8 +35,7 @@ const MENU_SECTIONS = [
     items: [
       { icon: 'information-circle-outline', label: 'About Us',          color: '#E64A78', route: 'AboutUs' },
       { icon: 'document-text-outline',      label: 'Terms & Conditions', color: '#C89738', route: 'TermsConditions' },
-      { icon: 'shield-checkmark-outline',    label: 'Privacy Policy',      color: '#4A7CE6', route: 'PrivacyPolicy' },
-      { icon: 'trash-outline',             label: 'Delete Account',      color: '#EF4444', route: 'DeleteAccount' },
+      { icon: 'shield-checkmark-outline',   label: 'Privacy Policy',     color: '#0E9F6E', route: 'PrivacyPolicy' },
     ],
   },
   {
@@ -50,34 +52,44 @@ export default function ProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [profileData, setProfileData] = useState(user);
   const [statsData, setStatsData] = useState({
+    walletBalance: 0,
     earnings: null,
     members: 0,
     orders: null,
+    pendingAmount: 0,
   });
 
   const currentUser = profileData || user;
 
+  // Fetch dashboard stats (revenue, members, orders) + profile in parallel
   const fetchAllData = useCallback(async () => {
     try {
-      const [profileRes, dashRes, ordersRes] = await Promise.allSettled([
-        profileService.getProfile(),
+      const [dashRes, profileRes, ordersRes, pendingHoldRes] = await Promise.allSettled([
         homeService.getDashboard(),
+        profileService.getProfile(),
         orderService.getOrders(1, 1),
+        storageService.getPendingWithdrawAmount(),
       ]);
+
+      const pendingHoldVal =
+        pendingHoldRes.status === 'fulfilled' ? Number(pendingHoldRes.value || 0) : 0;
 
       if (profileRes.status === 'fulfilled' && profileRes.value?.success && profileRes.value?.data) {
         setProfileData(profileRes.value.data);
       }
 
+      let walletBalVal = 0;
       let earningsVal = 0;
       let membersVal = 0;
       let ordersVal = 0;
 
       if (dashRes.status === 'fulfilled' && dashRes.value?.success && dashRes.value?.data) {
         const d = dashRes.value.data;
-        const dEarnings = d.wallet?.total_revenue ?? d.wallet?.wallet_balance;
-        if (dEarnings !== undefined && dEarnings !== null) {
-          earningsVal = Number(dEarnings);
+        if (d.wallet?.wallet_balance !== undefined && d.wallet?.wallet_balance !== null) {
+          walletBalVal = Number(d.wallet.wallet_balance);
+        }
+        if (d.wallet?.total_revenue !== undefined && d.wallet?.total_revenue !== null) {
+          earningsVal = Number(d.wallet.total_revenue);
         }
         if (d.team?.total_members !== undefined) {
           membersVal = Number(d.team.total_members);
@@ -92,19 +104,29 @@ export default function ProfileScreen() {
         ordersVal = Number(ordersRes.value.total);
       }
 
-      // Fallback for earnings from profile wallet_balance if dashboard is 0
+      // Wallet balance from profile API or current user
       const profBal =
         profileRes.status === 'fulfilled' && profileRes.value?.data?.wallet_balance !== undefined
-          ? profileRes.value.data.wallet_balance
-          : currentUser?.wallet_balance;
-      if (earningsVal === 0 && profBal) {
-        earningsVal = Number(profBal);
+          ? Number(profileRes.value.data.wallet_balance)
+          : currentUser?.wallet_balance !== undefined
+            ? Number(currentUser.wallet_balance)
+            : 0;
+
+      if (profBal > 0 || walletBalVal === 0) {
+        walletBalVal = profBal;
+      }
+
+      // Fallback for earnings from profile wallet_balance if dashboard is 0
+      if (earningsVal === 0 && profBal > 0) {
+        earningsVal = profBal;
       }
 
       setStatsData({
+        walletBalance: walletBalVal,
         earnings: earningsVal,
         members: membersVal,
         orders: ordersVal,
+        pendingAmount: pendingHoldVal,
       });
     } catch (err) {
       console.log('Profile fetchAllData error:', err.message);
@@ -152,6 +174,20 @@ export default function ProfileScreen() {
       Alert.alert(item.label, `${item.label} will be available soon!`);
     }
   };
+
+  const currentWalletBalance =
+    profileData?.wallet_balance !== undefined && profileData?.wallet_balance !== null
+      ? Number(profileData.wallet_balance)
+      : statsData.walletBalance > 0
+        ? statsData.walletBalance
+        : currentUser?.wallet_balance !== undefined
+          ? Number(currentUser.wallet_balance)
+          : 0;
+
+  const displayWalletBalance = `₹${Number(currentWalletBalance).toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 
   const displayEarnings =
     statsData.earnings !== null
@@ -295,6 +331,45 @@ export default function ProfileScreen() {
               {i < 2 && <View style={styles.statDivider} />}
             </React.Fragment>
           ))}
+        </View>
+
+        {/* Quick Wallet & Withdraw Card */}
+        <View style={styles.walletWithdrawCard}>
+          <TouchableOpacity
+            style={styles.walletWithdrawLeft}
+            onPress={() => navigation.navigate('Wallet')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.walletWithdrawIconBox}>
+              <Ionicons name="wallet-outline" size={20} color="#0E9F6E" />
+            </View>
+            <View style={styles.walletWithdrawInfo}>
+              <Text style={styles.walletWithdrawSub} numberOfLines={1}>
+                Available Balance
+              </Text>
+              <View style={styles.walletAmountRow}>
+                <Text style={styles.walletWithdrawAmount} numberOfLines={1}>
+                  {displayWalletBalance}
+                </Text>
+                {statsData.pendingAmount > 0 && (
+                  <View style={styles.walletHoldBadge}>
+                    <Ionicons name="time-outline" size={10} color="#D97706" />
+                    <Text style={styles.walletHoldBadgeText}>
+                      ₹{Number(statsData.pendingAmount).toLocaleString('en-IN')} held
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.walletWithdrawBtn}
+            onPress={() => navigation.navigate('Withdraw')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="arrow-up-circle" size={16} color="#FFFFFF" />
+            <Text style={styles.walletWithdrawBtnText}>Withdraw</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Menu Sections */}
@@ -454,7 +529,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    marginBottom: 12,
     shadowColor: '#2A1E24',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -477,6 +552,95 @@ const styles = StyleSheet.create({
     width: 1,
     height: 36,
     backgroundColor: '#F0EAED',
+  },
+  walletWithdrawCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 22,
+    borderWidth: 1,
+    borderColor: '#F0EAED',
+    shadowColor: '#2A1E24',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  walletWithdrawLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    marginRight: 10,
+  },
+  walletWithdrawIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    backgroundColor: 'rgba(14, 159, 110, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  walletWithdrawInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  walletWithdrawSub: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 11,
+    color: '#9E8E93',
+    marginBottom: 2,
+  },
+  walletAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  walletWithdrawAmount: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 16.5,
+    color: '#2A1E24',
+  },
+  walletHoldBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  walletHoldBadgeText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 10,
+    color: '#B45309',
+  },
+  walletWithdrawBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#0E9F6E',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 13,
+    shadowColor: '#0E9F6E',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+    flexShrink: 0,
+  },
+  walletWithdrawBtnText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 13,
+    color: '#FFFFFF',
   },
   menuSection: { marginBottom: 20 },
   sectionTitle: {

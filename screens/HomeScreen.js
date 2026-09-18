@@ -102,40 +102,6 @@ export default function HomeScreen({ navigation }) {
   );
 
   // ─────────────────────────────────────────
-  // Share Referral
-  // ─────────────────────────────────────────
-  const handleShareReferral = async () => {
-    const isProfileActive = Boolean(
-      dashboardData?.referral?.is_referral_active ??
-      dashboardData?.profile_progression_bar?.is_profile_active ??
-      dashboardData?.user?.is_profile_active ??
-      user?.is_profile_active
-    );
-
-    if (!isProfileActive) {
-      Alert.alert(
-        "Referral Code Inactive",
-        "Your referral code is generated, but other users cannot use it until your profile is approved and activated by Admin."
-      );
-      return;
-    }
-
-    const referral = dashboardData?.referral;
-    const refCode = referral?.referral_code || user?.referral_code;
-    if (!refCode) return;
-
-    try {
-      await Share.share({
-        message:
-          referral?.share_message ||
-          `Join Divy Shakti and start your wellness & earning journey! Use my referral code: ${refCode}`,
-      });
-    } catch (err) {
-      console.error("Share error:", err);
-    }
-  };
-
-  // ─────────────────────────────────────────
   // Extracted Data from Backend API
   // ─────────────────────────────────────────
   const userData = dashboardData?.user || user || {};
@@ -227,6 +193,9 @@ export default function HomeScreen({ navigation }) {
   const walletBalance = Number(
     walletData.wallet_balance ?? userData.wallet_balance ?? 0,
   );
+  const pendingWithdrawAmount = Number(
+    walletData.pending_withdraw_amount ?? userData.pending_withdraw_amount ?? 0,
+  );
   const totalRevenue = Number(walletData.total_revenue ?? 0);
   const todayRevenue = Number(walletData.today_revenue ?? 0);
   const thisMonthRevenue = Number(walletData.this_month_revenue ?? 0);
@@ -254,6 +223,43 @@ export default function HomeScreen({ navigation }) {
   // Referral Info
   const referralCode =
     dashboardData?.referral?.referral_code || userData.referral_code || "";
+  const rawProfileActive =
+    dashboardData?.referral?.is_referral_active ??
+    profileProgress?.is_profile_active ??
+    userData?.is_profile_active ??
+    user?.is_profile_active;
+  const isProfileActive =
+    rawProfileActive === true ||
+    rawProfileActive === 1 ||
+    rawProfileActive === "1" ||
+    (rawProfileActive === undefined && (userData?.status === "Active" || user?.status === "Active"));
+
+  // ─────────────────────────────────────────
+  // Share Referral
+  // ─────────────────────────────────────────
+  const handleShareReferral = async () => {
+    if (!isProfileActive) {
+      Alert.alert(
+        "Referral Code Inactive",
+        "Your referral code is generated, but other users cannot use it until your profile is approved and activated by Admin."
+      );
+      return;
+    }
+
+    const referral = dashboardData?.referral;
+    const refCode = referral?.referral_code || userData.referral_code || user?.referral_code;
+    if (!refCode) return;
+
+    try {
+      await Share.share({
+        message:
+          referral?.share_message ||
+          `Join Divy Shakti and start your wellness & earning journey! Use my referral code: ${refCode}`,
+      });
+    } catch (err) {
+      console.error("Share error:", err);
+    }
+  };
 
   // ─────────────────────────────────────────
   // Helpers
@@ -585,10 +591,19 @@ export default function HomeScreen({ navigation }) {
             )}
           </View>
 
-          <Text style={styles.bannerLabel}>Total Wallet Balance</Text>
+          <Text style={styles.bannerLabel}>Available Wallet Balance</Text>
           <Text style={styles.bannerAmount}>
             ₹ {walletBalance.toLocaleString("en-IN")}
           </Text>
+
+          {pendingWithdrawAmount > 0 && (
+            <View style={styles.bannerPendingPill}>
+              <Ionicons name="time-outline" size={11} color="#FBBF24" />
+              <Text style={styles.bannerPendingText}>
+                ₹{pendingWithdrawAmount.toLocaleString("en-IN")} on hold (withdrawal review)
+              </Text>
+            </View>
+          )}
 
           <View style={styles.bannerRow}>
             <TouchableOpacity
@@ -1386,7 +1401,25 @@ const styles = StyleSheet.create({
     fontSize: 32,
     color: "#FFFFFF",
     letterSpacing: 0.5,
-    marginBottom: 18,
+    marginBottom: 10,
+  },
+  bannerPendingPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 5,
+    backgroundColor: "rgba(245, 158, 11, 0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.35)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginBottom: 14,
+  },
+  bannerPendingText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 10.5,
+    color: "#FBBF24",
   },
   bannerRow: {
     flexDirection: "row",

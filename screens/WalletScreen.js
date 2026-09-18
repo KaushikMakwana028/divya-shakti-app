@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import walletService from "../services/walletService";
 import { useAuth } from "../contexts/AuthContext";
@@ -38,15 +39,15 @@ const PRESET_AMOUNTS = [500, 1000, 2000, 5000];
 function DetailRow({ icon, label, value, valueColor, bold, last }) {
   if (value === null || value === undefined || value === "") return null;
   return (
-    <View style={[styles.detailsInfoRow, last && styles.detailsInfoRowLast]}>
-      <View style={styles.detailsInfoRowLeft}>
-        {icon ? <Ionicons name={icon} size={14} color="#9E8E93" /> : null}
-        <Text style={styles.detailsInfoLabel}>{label}</Text>
+    <View style={[styles.detailRow, last && { borderBottomWidth: 0 }]}>
+      <View style={styles.detailLabelWrap}>
+        <Ionicons name={icon} size={15} color="#9E8E93" />
+        <Text style={styles.detailLabel}>{label}</Text>
       </View>
       <Text
         style={[
-          styles.detailsInfoValue,
-          valueColor && { color: valueColor },
+          styles.detailValue,
+          valueColor ? { color: valueColor } : null,
           bold && { fontFamily: "Poppins_700Bold" },
         ]}
       >
@@ -61,11 +62,18 @@ export default function WalletScreen({ navigation }) {
 
   // Screen State
   const [balance, setBalance] = useState(0);
+  const [rawBalance, setRawBalance] = useState(0);
+  const [pendingAmount, setPendingAmount] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [depositRequests, setDepositRequests] = useState([]);
   const [activeTab, setActiveTab] = useState("transactions"); // 'transactions' | 'deposits'
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Pagination State (10 items per page)
+  const ITEMS_PER_PAGE = 10;
+  const [txnPage, setTxnPage] = useState(1);
+  const [depositPage, setDepositPage] = useState(1);
 
   // Deposit Request Modal State (Add Money)
   const [depositModalVisible, setDepositModalVisible] = useState(false);
@@ -100,12 +108,14 @@ export default function WalletScreen({ navigation }) {
     try {
       const [balRes, txnsRes, depRes] = await Promise.all([
         walletService.getWalletBalance(),
-        walletService.getWalletTransactions(1, 30),
-        walletService.getDepositRequests(1, 30),
+        walletService.getWalletTransactions(1, 100),
+        walletService.getDepositRequests(1, 100),
       ]);
 
       if (balRes.success) {
         setBalance(balRes.balance);
+        setPendingAmount(balRes.pendingAmount || 0);
+        setRawBalance(balRes.rawBalance || balRes.balance);
       }
       if (txnsRes.success) {
         setTransactions(txnsRes.transactions);
@@ -121,12 +131,20 @@ export default function WalletScreen({ navigation }) {
     }
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      fetchWalletData();
+    }, [fetchWalletData]),
+  );
+
   useEffect(() => {
     fetchWalletData();
   }, [fetchWalletData]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
+    setTxnPage(1);
+    setDepositPage(1);
     fetchWalletData();
   }, [fetchWalletData]);
 
@@ -312,6 +330,108 @@ export default function WalletScreen({ navigation }) {
     );
   }
 
+  // ─────────────────────────────────────────
+  // Pagination Calculations (10 per page)
+  // ─────────────────────────────────────────
+  const totalTxnPages = Math.ceil(transactions.length / ITEMS_PER_PAGE) || 1;
+  const currentTxnPage = Math.min(txnPage, totalTxnPages);
+  const txnStartIndex = (currentTxnPage - 1) * ITEMS_PER_PAGE;
+  const paginatedTransactions = transactions.slice(
+    txnStartIndex,
+    txnStartIndex + ITEMS_PER_PAGE,
+  );
+
+  const totalDepositPages =
+    Math.ceil(depositRequests.length / ITEMS_PER_PAGE) || 1;
+  const currentDepositPage = Math.min(depositPage, totalDepositPages);
+  const depositStartIndex = (currentDepositPage - 1) * ITEMS_PER_PAGE;
+  const paginatedDeposits = depositRequests.slice(
+    depositStartIndex,
+    depositStartIndex + ITEMS_PER_PAGE,
+  );
+
+  const renderPagination = (
+    currentPage,
+    totalPages,
+    totalItems,
+    onPageChange,
+  ) => {
+    if (totalItems <= ITEMS_PER_PAGE) return null;
+
+    const fromItem = (currentPage - 1) * ITEMS_PER_PAGE + 1;
+    const toItem = Math.min(currentPage * ITEMS_PER_PAGE, totalItems);
+
+    return (
+      <View style={styles.paginationContainer}>
+        <View style={styles.paginationInfoRow}>
+          <Text style={styles.paginationInfoText}>
+            Showing{" "}
+            <Text style={styles.paginationInfoHighlight}>
+              {fromItem}–{toItem}
+            </Text>{" "}
+            of <Text style={styles.paginationInfoHighlight}>{totalItems}</Text>{" "}
+            entries
+          </Text>
+        </View>
+
+        <View style={styles.paginationControlsRow}>
+          <TouchableOpacity
+            style={[styles.pageBtn, currentPage <= 1 && styles.pageBtnDisabled]}
+            disabled={currentPage <= 1}
+            onPress={() => onPageChange(Math.max(1, currentPage - 1))}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="chevron-back"
+              size={16}
+              color={currentPage <= 1 ? "#C5B8BD" : "#2A1E24"}
+            />
+            <Text
+              style={[
+                styles.pageBtnText,
+                currentPage <= 1 && styles.pageBtnTextDisabled,
+              ]}
+            >
+              Previous
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.pageNumberBadge}>
+            <Text style={styles.pageNumberText}>
+              <Text style={styles.pageNumberCurrent}>{currentPage}</Text>
+              {" / "}
+              <Text style={styles.pageNumberTotal}>{totalPages}</Text>
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={[
+              styles.pageBtn,
+              currentPage >= totalPages && styles.pageBtnDisabled,
+            ]}
+            disabled={currentPage >= totalPages}
+            onPress={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.pageBtnText,
+                currentPage >= totalPages && styles.pageBtnTextDisabled,
+              ]}
+            >
+              Next
+            </Text>
+            <Ionicons
+              name="chevron-forward"
+              size={16}
+              color={currentPage >= totalPages ? "#C5B8BD" : "#2A1E24"}
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   const proofUrl = getProofUrl(selectedDepositRequest);
 
   return (
@@ -368,23 +488,45 @@ export default function WalletScreen({ navigation }) {
             ₹ {balance.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
           </Text>
 
+          {pendingAmount > 0 && (
+            <View style={styles.pendingHoldPill}>
+              <Ionicons name="time-outline" size={12} color="#F59E0B" />
+              <Text style={styles.pendingHoldText}>
+                ₹
+                {pendingAmount.toLocaleString("en-IN", {
+                  minimumFractionDigits: 2,
+                })}{" "}
+                held for withdrawal review
+              </Text>
+            </View>
+          )}
+
           {/* Action Buttons */}
           <View style={styles.heroActionRow}>
             <TouchableOpacity
               style={styles.depositBtn}
               onPress={() => setDepositModalVisible(true)}
-              activeOpacity={0.8}
+              activeOpacity={0.85}
             >
-              <Ionicons name="add-circle" size={18} color="#FFFFFF" />
-              <Text style={styles.depositBtnText}>Deposit Money</Text>
+              <Ionicons name="add-circle" size={16} color="#FFFFFF" />
+              <Text style={styles.depositBtnText}>Deposit</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.withdrawBtn}
+              onPress={() => navigation.navigate("Withdraw")}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="arrow-up-circle" size={16} color="#FFFFFF" />
+              <Text style={styles.withdrawBtnText}>Withdraw</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.historyBtn}
               onPress={() => setActiveTab("transactions")}
-              activeOpacity={0.8}
+              activeOpacity={0.85}
             >
-              <Ionicons name="time-outline" size={16} color="#FFFFFF" />
+              <Ionicons name="time-outline" size={15} color="#FFFFFF" />
               <Text style={styles.historyBtnText}>History</Text>
             </TouchableOpacity>
           </View>
@@ -404,18 +546,11 @@ export default function WalletScreen({ navigation }) {
             onPress={() => setActiveTab("transactions")}
             activeOpacity={0.85}
           >
-            <View
-              style={[
-                styles.tabIconWrap,
-                activeTab === "transactions" && styles.tabIconWrapActive,
-              ]}
-            >
-              <Ionicons
-                name="swap-horizontal-outline"
-                size={15}
-                color={activeTab === "transactions" ? "#FFFFFF" : "#9E8E93"}
-              />
-            </View>
+            <Ionicons
+              name="swap-horizontal"
+              size={15}
+              color={activeTab === "transactions" ? "#FFFFFF" : "#8A7980"}
+            />
             <Text
               style={[
                 styles.tabBtnText,
@@ -450,18 +585,11 @@ export default function WalletScreen({ navigation }) {
             onPress={() => setActiveTab("deposits")}
             activeOpacity={0.85}
           >
-            <View
-              style={[
-                styles.tabIconWrap,
-                activeTab === "deposits" && styles.tabIconWrapActive,
-              ]}
-            >
-              <Ionicons
-                name="cash-outline"
-                size={15}
-                color={activeTab === "deposits" ? "#FFFFFF" : "#9E8E93"}
-              />
-            </View>
+            <Ionicons
+              name="cash"
+              size={15}
+              color={activeTab === "deposits" ? "#FFFFFF" : "#8A7980"}
+            />
             <Text
               style={[
                 styles.tabBtnText,
@@ -503,83 +631,95 @@ export default function WalletScreen({ navigation }) {
                 </Text>
               </View>
             ) : (
-              transactions.map((txn) => {
-                const isCredit = txn.type === "credit";
-                return (
-                  <View key={txn.id} style={styles.txnCard}>
-                    <View
-                      style={[
-                        styles.txnAccentBar,
-                        isCredit
-                          ? styles.txnAccentCredit
-                          : styles.txnAccentDebit,
-                      ]}
-                    />
-                    <View
-                      style={[
-                        styles.txnIconBox,
-                        isCredit ? styles.txnCreditIcon : styles.txnDebitIcon,
-                      ]}
-                    >
-                      <Ionicons
-                        name={isCredit ? "arrow-down" : "arrow-up"}
-                        size={19}
-                        color={isCredit ? "#27A462" : "#EF4444"}
-                      />
-                    </View>
-
-                    <View style={styles.txnInfoCol}>
-                      <Text style={styles.txnSource} numberOfLines={1}>
-                        {formatSource(txn.source)}
-                      </Text>
-                      {txn.remark ? (
-                        <Text style={styles.txnRemark} numberOfLines={2}>
-                          {txn.remark}
-                        </Text>
-                      ) : null}
-                      <View style={styles.txnDateRow}>
-                        <Ionicons
-                          name="time-outline"
-                          size={10}
-                          color="#C5B8BD"
-                        />
-                        <Text style={styles.txnDate}>
-                          {formatDate(txn.created_at)}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.txnAmountCol}>
-                      <Text
-                        style={[
-                          styles.txnAmount,
-                          isCredit ? styles.txnCreditText : styles.txnDebitText,
-                        ]}
-                      >
-                        {isCredit ? "+" : "-"} ₹
-                        {txn.amount.toLocaleString("en-IN")}
-                      </Text>
+              <>
+                {paginatedTransactions.map((txn) => {
+                  const isCredit = txn.type === "credit";
+                  return (
+                    <View key={txn.id} style={styles.txnCard}>
                       <View
                         style={[
-                          styles.txnTypeBadge,
-                          isCredit ? styles.txnTypeCredit : styles.txnTypeDebit,
+                          styles.txnAccentBar,
+                          isCredit
+                            ? styles.txnAccentCredit
+                            : styles.txnAccentDebit,
+                        ]}
+                      />
+                      <View
+                        style={[
+                          styles.txnIconBox,
+                          isCredit ? styles.txnCreditIcon : styles.txnDebitIcon,
                         ]}
                       >
+                        <Ionicons
+                          name={isCredit ? "arrow-down" : "arrow-up"}
+                          size={19}
+                          color={isCredit ? "#27A462" : "#EF4444"}
+                        />
+                      </View>
+
+                      <View style={styles.txnInfoCol}>
+                        <Text style={styles.txnSource} numberOfLines={1}>
+                          {formatSource(txn.source)}
+                        </Text>
+                        {txn.remark ? (
+                          <Text style={styles.txnRemark} numberOfLines={2}>
+                            {txn.remark}
+                          </Text>
+                        ) : null}
+                        <View style={styles.txnDateRow}>
+                          <Ionicons
+                            name="time-outline"
+                            size={10}
+                            color="#C5B8BD"
+                          />
+                          <Text style={styles.txnDate}>
+                            {formatDate(txn.created_at)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.txnAmountCol}>
                         <Text
                           style={[
-                            styles.txnTypeBadgeText,
+                            styles.txnAmount,
                             isCredit
-                              ? styles.txnTypeCreditText
-                              : styles.txnTypeDebitText,
+                              ? styles.txnCreditText
+                              : styles.txnDebitText,
                           ]}
                         >
-                          {isCredit ? "CREDIT" : "DEBIT"}
+                          {isCredit ? "+" : "-"} ₹
+                          {txn.amount.toLocaleString("en-IN")}
                         </Text>
+                        <View
+                          style={[
+                            styles.txnTypeBadge,
+                            isCredit
+                              ? styles.txnTypeCredit
+                              : styles.txnTypeDebit,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.txnTypeBadgeText,
+                              isCredit
+                                ? styles.txnTypeCreditText
+                                : styles.txnTypeDebitText,
+                            ]}
+                          >
+                            {isCredit ? "CREDIT" : "DEBIT"}
+                          </Text>
+                        </View>
                       </View>
                     </View>
-                  </View>
-                );
-              })
+                  );
+                })}
+                {renderPagination(
+                  currentTxnPage,
+                  totalTxnPages,
+                  transactions.length,
+                  setTxnPage,
+                )}
+              </>
             )}
           </View>
         )}
@@ -604,156 +744,166 @@ export default function WalletScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
             ) : (
-              depositRequests.map((req) => {
-                const isApproved = req.status === "approved";
-                const isPending = req.status === "pending";
-                const isRejected = req.status === "rejected";
-                const thumbUrl = getProofUrl(req);
+              <>
+                {paginatedDeposits.map((req) => {
+                  const isApproved = req.status === "approved";
+                  const isPending = req.status === "pending";
+                  const isRejected = req.status === "rejected";
+                  const thumbUrl = getProofUrl(req);
 
-                return (
-                  <TouchableOpacity
-                    key={req.id}
-                    style={styles.depositCard}
-                    activeOpacity={0.75}
-                    onPress={() => handleOpenDepositDetails(req)}
-                  >
-                    <View
-                      style={[
-                        styles.depositAccentBar,
-                        isApproved && styles.depositAccentApproved,
-                        isPending && styles.depositAccentPending,
-                        isRejected && styles.depositAccentRejected,
-                      ]}
-                    />
-                    <View style={styles.depositTopRow}>
-                      <View style={styles.depositMethodWrap}>
-                        <View style={styles.depositMethodIconBox}>
+                  return (
+                    <TouchableOpacity
+                      key={req.id}
+                      style={styles.depositCard}
+                      activeOpacity={0.75}
+                      onPress={() => handleOpenDepositDetails(req)}
+                    >
+                      <View
+                        style={[
+                          styles.depositAccentBar,
+                          isApproved && styles.depositAccentApproved,
+                          isPending && styles.depositAccentPending,
+                          isRejected && styles.depositAccentRejected,
+                        ]}
+                      />
+                      <View style={styles.depositTopRow}>
+                        <View style={styles.depositMethodWrap}>
+                          <View style={styles.depositMethodIconBox}>
+                            <Ionicons
+                              name={
+                                req.payment_method === "online"
+                                  ? "card-outline"
+                                  : "cash-outline"
+                              }
+                              size={16}
+                              color="#E64A78"
+                            />
+                          </View>
+                          <Text style={styles.depositMethodText}>
+                            {req.payment_method_label ||
+                              (req.payment_method === "online"
+                                ? "Online Transfer"
+                                : "Cash Deposit")}
+                          </Text>
+                        </View>
+
+                        {/* Status Badge */}
+                        <View
+                          style={[
+                            styles.statusBadge,
+                            isApproved && styles.statusApproved,
+                            isPending && styles.statusPending,
+                            isRejected && styles.statusRejected,
+                          ]}
+                        >
                           <Ionicons
                             name={
-                              req.payment_method === "online"
-                                ? "card-outline"
-                                : "cash-outline"
+                              isApproved
+                                ? "checkmark-circle"
+                                : isPending
+                                  ? "time-outline"
+                                  : "close-circle"
                             }
-                            size={16}
+                            size={12}
+                            color={
+                              isApproved
+                                ? "#27A462"
+                                : isPending
+                                  ? "#C89738"
+                                  : "#EF4444"
+                            }
+                          />
+                          <Text
+                            style={[
+                              styles.statusBadgeText,
+                              isApproved && styles.statusApprovedText,
+                              isPending && styles.statusPendingText,
+                              isRejected && styles.statusRejectedText,
+                            ]}
+                          >
+                            {req.status_label ||
+                              (isApproved
+                                ? "Approved"
+                                : isPending
+                                  ? "Pending"
+                                  : "Rejected")}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.depositDivider} />
+
+                      <View style={styles.depositMiddleRow}>
+                        <View>
+                          <Text style={styles.depositAmountLabel}>
+                            Requested Amount
+                          </Text>
+                          <Text style={styles.depositAmountValue}>
+                            {req.formatted_amount ||
+                              `₹ ${Number(req.amount).toLocaleString("en-IN")}`}
+                          </Text>
+                        </View>
+
+                        {thumbUrl ? (
+                          <View style={styles.proofThumbWrap}>
+                            <Image
+                              source={{ uri: thumbUrl }}
+                              style={styles.proofThumb}
+                              resizeMode="cover"
+                            />
+                            <View style={styles.proofThumbBadge}>
+                              <Ionicons
+                                name="receipt-outline"
+                                size={10}
+                                color="#FFFFFF"
+                              />
+                            </View>
+                          </View>
+                        ) : null}
+                      </View>
+
+                      {req.remark ? (
+                        <Text style={styles.depositRemark} numberOfLines={3}>
+                          <Text style={{ fontFamily: "Poppins_600SemiBold" }}>
+                            Note:{" "}
+                          </Text>
+                          {req.remark}
+                        </Text>
+                      ) : null}
+
+                      <View style={styles.depositCardFooter}>
+                        <View style={styles.depositDateRow}>
+                          <Ionicons
+                            name="calendar-outline"
+                            size={11}
+                            color="#C5B8BD"
+                          />
+                          <Text style={styles.depositDate}>
+                            {req.formatted_created_at ||
+                              formatDate(req.created_at)}
+                          </Text>
+                        </View>
+                        <View style={styles.viewDetailsRow}>
+                          <Text style={styles.viewDetailsText}>
+                            View Details
+                          </Text>
+                          <Ionicons
+                            name="chevron-forward"
+                            size={13}
                             color="#E64A78"
                           />
                         </View>
-                        <Text style={styles.depositMethodText}>
-                          {req.payment_method_label ||
-                            (req.payment_method === "online"
-                              ? "Online Transfer"
-                              : "Cash Deposit")}
-                        </Text>
                       </View>
-
-                      {/* Status Badge */}
-                      <View
-                        style={[
-                          styles.statusBadge,
-                          isApproved && styles.statusApproved,
-                          isPending && styles.statusPending,
-                          isRejected && styles.statusRejected,
-                        ]}
-                      >
-                        <Ionicons
-                          name={
-                            isApproved
-                              ? "checkmark-circle"
-                              : isPending
-                                ? "time-outline"
-                                : "close-circle"
-                          }
-                          size={12}
-                          color={
-                            isApproved
-                              ? "#27A462"
-                              : isPending
-                                ? "#C89738"
-                                : "#EF4444"
-                          }
-                        />
-                        <Text
-                          style={[
-                            styles.statusBadgeText,
-                            isApproved && styles.statusApprovedText,
-                            isPending && styles.statusPendingText,
-                            isRejected && styles.statusRejectedText,
-                          ]}
-                        >
-                          {req.status_label ||
-                            (isApproved
-                              ? "Approved"
-                              : isPending
-                                ? "Pending"
-                                : "Rejected")}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.depositDivider} />
-
-                    <View style={styles.depositMiddleRow}>
-                      <View>
-                        <Text style={styles.depositAmountLabel}>
-                          Requested Amount
-                        </Text>
-                        <Text style={styles.depositAmountValue}>
-                          {req.formatted_amount ||
-                            `₹ ${Number(req.amount).toLocaleString("en-IN")}`}
-                        </Text>
-                      </View>
-
-                      {thumbUrl ? (
-                        <View style={styles.proofThumbWrap}>
-                          <Image
-                            source={{ uri: thumbUrl }}
-                            style={styles.proofThumb}
-                            resizeMode="cover"
-                          />
-                          <View style={styles.proofThumbBadge}>
-                            <Ionicons
-                              name="receipt-outline"
-                              size={10}
-                              color="#FFFFFF"
-                            />
-                          </View>
-                        </View>
-                      ) : null}
-                    </View>
-
-                    {req.remark ? (
-                      <Text style={styles.depositRemark} numberOfLines={3}>
-                        <Text style={{ fontFamily: "Poppins_600SemiBold" }}>
-                          Note:{" "}
-                        </Text>
-                        {req.remark}
-                      </Text>
-                    ) : null}
-
-                    <View style={styles.depositCardFooter}>
-                      <View style={styles.depositDateRow}>
-                        <Ionicons
-                          name="calendar-outline"
-                          size={11}
-                          color="#C5B8BD"
-                        />
-                        <Text style={styles.depositDate}>
-                          {req.formatted_created_at ||
-                            formatDate(req.created_at)}
-                        </Text>
-                      </View>
-                      <View style={styles.viewDetailsRow}>
-                        <Text style={styles.viewDetailsText}>View Details</Text>
-                        <Ionicons
-                          name="chevron-forward"
-                          size={13}
-                          color="#E64A78"
-                        />
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })
+                    </TouchableOpacity>
+                  );
+                })}
+                {renderPagination(
+                  currentDepositPage,
+                  totalDepositPages,
+                  depositRequests.length,
+                  setDepositPage,
+                )}
+              </>
             )}
           </View>
         )}
@@ -1671,47 +1821,88 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins_700Bold",
     fontSize: 30,
     color: "#FFFFFF",
-    marginBottom: 20,
+    marginBottom: 14,
+  },
+  pendingHoldPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 6,
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.4)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 16,
+    marginTop: -4,
+  },
+  pendingHoldText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 11.5,
+    color: "#FBBF24",
   },
   heroActionRow: {
     flexDirection: "row",
-    gap: 12,
+    gap: 9,
+    marginTop: 2,
   },
   depositBtn: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 5,
     backgroundColor: "#E64A78",
-    paddingVertical: 12,
-    borderRadius: 14,
+    paddingVertical: 11,
+    borderRadius: 13,
     shadowColor: "#E64A78",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
   },
   depositBtnText: {
     fontFamily: "Poppins_600SemiBold",
-    fontSize: 13.5,
+    fontSize: 12,
     color: "#FFFFFF",
   },
-  historyBtn: {
+  withdrawBtn: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 14,
+    gap: 4, // slightly reduced gap prevents text crowding
+    backgroundColor: "#0E9F6E", // matching your brownish-gold screenshot color
+    paddingVertical: 11,
+    paddingHorizontal: 8, // <-- Left & right inside spacing
+    borderRadius: 13,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  withdrawBtnText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 11, // reduced from 12 so "Withdraw" fits comfortably alongside the icon
+    color: "#FFFFFF",
+  },
+  historyBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    paddingVertical: 11,
+    borderRadius: 13,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
+    borderColor: "rgba(255, 255, 255, 0.22)",
   },
   historyBtnText: {
     fontFamily: "Poppins_600SemiBold",
-    fontSize: 13.5,
+    fontSize: 12,
     color: "#FFFFFF",
   },
   decorCircle1: {
@@ -1737,16 +1928,16 @@ const styles = StyleSheet.create({
   tabContainer: {
     flexDirection: "row",
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 6,
+    borderRadius: 16,
+    padding: 4,
     marginBottom: 20,
-    gap: 6,
+    gap: 4,
     borderWidth: 1,
     borderColor: "#F0EAED",
     shadowColor: "#2A1E24",
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
-    shadowRadius: 10,
+    shadowRadius: 8,
     elevation: 2,
   },
   tabBtn: {
@@ -1755,50 +1946,37 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    paddingVertical: 11,
-    paddingHorizontal: 6,
-    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 12,
   },
   tabBtnActive: {
     backgroundColor: "#E64A78",
     shadowColor: "#E64A78",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  tabIconWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FAF7F8",
-  },
-  tabIconWrapActive: {
-    backgroundColor: "rgba(255,255,255,0.18)",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
   },
   tabBtnText: {
-    fontFamily: "Poppins_500Medium",
-    fontSize: 12.5,
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 12,
     color: "#6B5F63",
-    flexShrink: 1,
   },
   tabBtnTextActive: {
     color: "#FFFFFF",
-    fontFamily: "Poppins_600SemiBold",
   },
   tabCountBadge: {
     minWidth: 20,
-    height: 20,
+    height: 19,
     paddingHorizontal: 5,
     borderRadius: 10,
-    backgroundColor: "#FAF7F8",
+    backgroundColor: "#F4EFF2",
     alignItems: "center",
     justifyContent: "center",
   },
   tabCountBadgeActive: {
-    backgroundColor: "rgba(255,255,255,0.22)",
+    backgroundColor: "rgba(255, 255, 255, 0.28)",
   },
   tabCountText: {
     fontFamily: "Poppins_700Bold",
@@ -2882,5 +3060,87 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins_600SemiBold",
     fontSize: 13,
     color: "#FFFFFF",
+  },
+
+  /* ── Pagination Styles ── */
+  paginationContainer: {
+    marginTop: 16,
+    marginBottom: 24,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: "#F3EFF1",
+    alignItems: "center",
+    shadowColor: "#2A1E24",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  paginationInfoRow: {
+    marginBottom: 10,
+  },
+  paginationInfoText: {
+    fontSize: 12,
+    color: "#8A7980",
+    fontFamily: "Poppins_500Medium",
+  },
+  paginationInfoHighlight: {
+    color: "#2A1E24",
+    fontFamily: "Poppins_600SemiBold",
+  },
+  paginationControlsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    gap: 8,
+  },
+  pageBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: "#FAF7F8",
+    borderWidth: 1,
+    borderColor: "#EFEAEB",
+  },
+  pageBtnDisabled: {
+    backgroundColor: "#F7F5F6",
+    borderColor: "#F0ECEE",
+    opacity: 0.45,
+  },
+  pageBtnText: {
+    fontSize: 13,
+    fontFamily: "Poppins_600SemiBold",
+    color: "#2A1E24",
+  },
+  pageBtnTextDisabled: {
+    color: "#C5B8BD",
+  },
+  pageNumberBadge: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    backgroundColor: "rgba(230, 74, 120, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(230, 74, 120, 0.2)",
+  },
+  pageNumberText: {
+    fontSize: 13,
+    color: "#8A7980",
+    fontFamily: "Poppins_500Medium",
+  },
+  pageNumberCurrent: {
+    color: "#E64A78",
+    fontFamily: "Poppins_700Bold",
+  },
+  pageNumberTotal: {
+    color: "#8A7980",
+    fontFamily: "Poppins_600SemiBold",
   },
 });

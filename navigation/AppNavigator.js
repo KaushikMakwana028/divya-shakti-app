@@ -1,5 +1,5 @@
 import React from "react";
-import { View, ActivityIndicator } from "react-native";
+import { View, ActivityIndicator, Image } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -20,6 +20,7 @@ import CartScreen from "../screens/CartScreen"; // NEW
 import CheckoutReviewScreen from "../screens/CheckoutReviewScreen";
 import OrderPlacedScreen from "../screens/OrderPlacedScreen";
 import WalletScreen from "../screens/WalletScreen";
+import WithdrawScreen from "../screens/WithdrawScreen";
 import AddressScreen from "../screens/AddressScreen";
 import OrdersScreen from "../screens/OrdersScreen";
 import OrderDetailsScreen from "../screens/OrderDetailsScreen";
@@ -61,6 +62,29 @@ export default function AppNavigator() {
           backgroundColor: "#FAF7F8",
         }}
       >
+        <View
+          style={{
+            width: 100,
+            height: 100,
+            borderRadius: 28,
+            overflow: "hidden",
+            marginBottom: 24,
+            borderWidth: 3,
+            borderColor: "#FFFFFF",
+            shadowColor: "#2A1E24",
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.15,
+            shadowRadius: 20,
+            elevation: 10,
+            backgroundColor: "#FFFFFF",
+          }}
+        >
+          <Image
+            source={require("../assets/logo.png")}
+            style={{ width: "100%", height: "100%" }}
+            resizeMode="cover"
+          />
+        </View>
         <ActivityIndicator size="large" color="#E64A78" />
       </View>
     );
@@ -114,6 +138,11 @@ export default function AppNavigator() {
         <Stack.Screen
           name="Wallet"
           component={WalletScreen}
+          options={{ animation: "slide_from_right" }}
+        />
+        <Stack.Screen
+          name="Withdraw"
+          component={WithdrawScreen}
           options={{ animation: "slide_from_right" }}
         />
         <Stack.Screen

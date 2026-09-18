@@ -6,6 +6,7 @@ const STORAGE_KEYS = {
     USER: 'user_data',
     BACKUP_TOKEN: 'permanent_auth_token_backup',
     BACKUP_USER: 'permanent_user_data_backup',
+    PENDING_WITHDRAW_AMOUNT: 'pending_withdraw_amount',
 };
 
 class StorageService {
@@ -198,6 +199,29 @@ class StorageService {
         } catch (error) {
             console.error('Error hiding order for customer:', error);
             return false;
+        }
+    }
+
+    // ─────────────────────────────────────────
+    // Pending Withdrawal Lock Amount
+    // Temporarily held from wallet balance until Admin approves or rejects
+    // ─────────────────────────────────────────
+    async setPendingWithdrawAmount(amount) {
+        try {
+            const val = Math.max(0, Number(amount) || 0);
+            await AsyncStorage.setItem(STORAGE_KEYS.PENDING_WITHDRAW_AMOUNT, String(val));
+            return val;
+        } catch (_) {
+            return 0;
+        }
+    }
+
+    async getPendingWithdrawAmount() {
+        try {
+            const val = await AsyncStorage.getItem(STORAGE_KEYS.PENDING_WITHDRAW_AMOUNT);
+            return val !== null ? Math.max(0, Number(val) || 0) : 0;
+        } catch (_) {
+            return 0;
         }
     }
 }

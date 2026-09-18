@@ -1,5 +1,6 @@
 import apiClient from './apiClient';
 import storageService from './storageService';
+import withdrawService from './withdrawService';
 
 class HomeService {
     constructor() {
@@ -20,14 +21,34 @@ class HomeService {
                 };
             }
 
-            const response = await this.api.get('/dashboard');
+            // Concurrently fetch dashboard and sync pending withdrawal amount
+            const [response, pendingAmount] = await Promise.all([
+                this.api.get('/dashboard'),
+                withdrawService.syncPendingWithdrawAmount().catch(() => storageService.getPendingWithdrawAmount()),
+            ]);
+
             if (response.data && response.data.status) {
-                if (response.data.data?.user) {
-                    await storageService.saveUser(response.data.data.user);
+                const dashData = response.data.data || {};
+                const holdAmount = Math.max(0, Number(pendingAmount) || 0);
+
+                if (dashData.wallet) {
+                    const rawBal = Number(dashData.wallet.wallet_balance) || 0;
+                    dashData.wallet.raw_wallet_balance = rawBal;
+                    dashData.wallet.wallet_balance = Math.max(0, rawBal - holdAmount);
+                    dashData.wallet.pending_withdraw_amount = holdAmount;
                 }
+
+                if (dashData.user) {
+                    const rawBal = Number(dashData.user.wallet_balance) || 0;
+                    dashData.user.raw_wallet_balance = rawBal;
+                    dashData.user.wallet_balance = Math.max(0, rawBal - holdAmount);
+                    dashData.user.pending_withdraw_amount = holdAmount;
+                    await storageService.saveUser(dashData.user);
+                }
+
                 return {
                     success: true,
-                    data: response.data.data,
+                    data: dashData,
                     message: response.data.message || 'Dashboard data retrieved successfully',
                 };
             }
