@@ -166,7 +166,7 @@ export default function OrderDetailsScreen({ route, navigation }) {
     );
     const alertTitle = isPaid ? "Cancel Order & Refund" : "Cancel Order";
     const alertMsg = isPaid
-      ? `Are you sure you want to cancel Order #${order.id}? The paid amount of ₹${Number(order.amount || 0).toLocaleString("en-IN")} will be refunded immediately to your Divya Shakti wallet.`
+      ? `Are you sure you want to cancel Order #${order.id}? The paid amount of ₹${Number(order.amount || 0).toLocaleString("en-IN")} will be refunded immediately to your Divy Shakti wallet.`
       : `Are you sure you want to cancel Order #${order.id}?`;
 
     Alert.alert(alertTitle, alertMsg, [
@@ -754,7 +754,7 @@ export default function OrderDetailsScreen({ route, navigation }) {
               </Text>
             </View>
             <Text style={[styles.noticeDesc, { color: "#065F46" }]}>
-              Thank you for shopping with Divya Shakti! Your order was delivered successfully.
+              Thank you for shopping with Divy Shakti! Your order was delivered successfully.
             </Text>
           </View>
         )}
@@ -782,7 +782,7 @@ export default function OrderDetailsScreen({ route, navigation }) {
             </View>
             <Text style={[styles.noticeDesc, { color: "#991B1B" }]}>
               This order was cancelled. Any paid amount has been refunded
-              directly to your Divya Shakti wallet.
+              directly to your Divy Shakti wallet.
             </Text>
           </View>
         )}

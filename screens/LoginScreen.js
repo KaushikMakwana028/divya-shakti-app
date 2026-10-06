@@ -12,14 +12,22 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import authService from '../services/authService';
-// import { Animated } from "react-native/types_generated/index";
 
-// Import local logo
 const logo = require("../assets/logo.png");
+
+const TERMS_URL = 'https://divyshakti.visiontechnolabs.com/terms_conditions';
+const PRIVACY_URL = 'https://divyshakti.visiontechnolabs.com/privacy_policy';
+
+const openLink = (url) => {
+  Linking.openURL(url).catch(() =>
+    Alert.alert('Error', 'Unable to open link. Please try again.')
+  );
+};
 
 export default function LoginScreen({ navigation }) {
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -50,7 +58,7 @@ export default function LoginScreen({ navigation }) {
           navigation.navigate("OtpVerify", {
             phone: phoneNumber,
             maskedMobile: result.data?.masked_mobile || phoneNumber,
-            isRegister: false, // ✅ Login flow
+            isRegister: false,
           });
         } else {
           if (
@@ -111,9 +119,7 @@ export default function LoginScreen({ navigation }) {
             {/* Phone Input */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Phone Number</Text>
-              <View
-                style={[styles.inputWrapper]}
-              >
+              <View style={styles.inputWrapper}>
                 <View style={styles.countryCode}>
                   <Text style={styles.countryCodeText}>+91</Text>
                 </View>
@@ -126,8 +132,6 @@ export default function LoginScreen({ navigation }) {
                   maxLength={10}
                   value={phoneNumber}
                   onChangeText={setPhoneNumber}
-                //   onFocus={() => setFocused(true)}
-                //   onBlur={() => setFocused(false)}
                 />
               </View>
             </View>
@@ -169,10 +173,22 @@ export default function LoginScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
+          {/* Footer */}
           <Text style={styles.footerText}>
-            By continuing, you agree to our{" "}
-            <Text style={styles.footerLink}>Terms</Text> &{" "}
-            <Text style={styles.footerLink}>Privacy Policy</Text>
+            By continuing, you agree to our{' '}
+            <Text
+              style={styles.footerLink}
+              onPress={() => openLink(TERMS_URL)}
+            >
+              Terms
+            </Text>
+            {' '}&{' '}
+            <Text
+              style={styles.footerLink}
+              onPress={() => openLink(PRIVACY_URL)}
+            >
+              Privacy Policy
+            </Text>
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -221,11 +237,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 6,
   },
-  brandTagline: {
-    fontFamily: "Poppins_400Regular",
-    fontSize: 14,
-    color: "#9E8E93",
-  },
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 28,
@@ -266,10 +277,6 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "#F0EAED",
     overflow: "hidden",
-  },
-  inputFocused: {
-    borderColor: "#E64A78",
-    backgroundColor: "#FFFFFF",
   },
   countryCode: {
     paddingHorizontal: 16,

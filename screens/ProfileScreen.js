@@ -8,6 +8,10 @@ import {
   Alert,
   Image,
   RefreshControl,
+  Modal,
+  TextInput,
+  ActivityIndicator,
+  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,28 +27,30 @@ const MENU_SECTIONS = [
   {
     title: 'Account',
     items: [
-      { icon: 'person-outline',        label: 'Edit Profile',       color: '#E64A78', route: 'EditProfile' },
-      { icon: 'wallet-outline',         label: 'My Wallet',          color: '#C89738', route: 'Wallet' },
-      { icon: 'arrow-up-circle-outline', label: 'Withdraw Money',    color: '#0E9F6E', route: 'Withdraw' },
-      { icon: 'location-outline',       label: 'My Addresses',       color: '#27A462', route: 'Addresses' },
-      { icon: 'document-text-outline',  label: 'My Orders',          color: '#7B61C4', route: 'Orders' },
+      { icon: 'person-outline', label: 'Edit Profile', color: '#E64A78', route: 'EditProfile' },
+      { icon: 'wallet-outline', label: 'My Wallet', color: '#C89738', route: 'Wallet' },
+      { icon: 'arrow-up-circle-outline', label: 'Withdraw Money', color: '#0E9F6E', route: 'Withdraw' },
+      { icon: 'location-outline', label: 'My Addresses', color: '#27A462', route: 'Addresses' },
+      { icon: 'document-text-outline', label: 'My Orders', color: '#7B61C4', route: 'Orders' },
     ],
   },
   {
     title: 'Settings',
     items: [
-      { icon: 'information-circle-outline', label: 'About Us',          color: '#E64A78', route: 'AboutUs' },
-      { icon: 'document-text-outline',      label: 'Terms & Conditions', color: '#C89738', route: 'TermsConditions' },
-      { icon: 'shield-checkmark-outline',   label: 'Privacy Policy',     color: '#0E9F6E', route: 'PrivacyPolicy' },
+      // { icon: 'information-circle-outline', label: 'About Us',          color: '#E64A78', route: 'AboutUs' },
+      { icon: 'document-text-outline', label: 'Terms & Conditions', color: '#C89738', route: 'TermsConditions' },
+      { icon: 'shield-checkmark-outline', label: 'Privacy Policy', color: '#0E9F6E', route: 'PrivacyPolicy' },
     ],
   },
   {
     title: 'Support',
     items: [
-      { icon: 'chatbubble-outline',        label: 'Contact Us',         color: '#E64A78', route: 'ContactUs' },
+      { icon: 'chatbubble-outline', label: 'Contact Us', color: '#E64A78', route: 'ContactUs' },
     ],
-  },
+  }
 ];
+
+const DELETE_CONFIRM_WORD = 'delete';
 
 export default function ProfileScreen() {
   const navigation = useNavigation();
@@ -58,6 +64,11 @@ export default function ProfileScreen() {
     orders: null,
     pendingAmount: 0,
   });
+
+  // Delete account state
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const currentUser = profileData || user;
 
@@ -161,7 +172,65 @@ export default function ProfileScreen() {
     ]);
   };
 
+  const openDeleteModal = () => {
+    setDeleteConfirmText('');
+    setDeleteModalVisible(true);
+  };
+
+  const closeDeleteModal = () => {
+    if (deletingAccount) return; // don't allow closing mid-request
+    setDeleteModalVisible(false);
+    setDeleteConfirmText('');
+  };
+
+  const isDeleteConfirmed =
+    deleteConfirmText.trim().toLowerCase() === DELETE_CONFIRM_WORD;
+
+  const handleDeleteAccount = async () => {
+    if (!isDeleteConfirmed || deletingAccount) return;
+
+    setDeletingAccount(true);
+    try {
+      // NOTE: profileService.deleteAccount() should call:
+      //   DELETE https://divyshakti.visiontechnolabs.com/api/delete-account
+      // through the same axios instance used elsewhere in this app so the
+      // auth token header is attached automatically. Example implementation
+      // to add in services/profileService.js if it isn't there yet:
+      //
+      //   deleteAccount: () => api.delete('/delete-account'),
+      //
+      // (adjust base URL / path to match how `api` is configured)
+      const response = await profileService.deleteAccount();
+
+      if (response && response.success === false) {
+        Alert.alert(
+          'Delete Account Failed',
+          response.message || 'We could not delete your account. Please try again.'
+        );
+        return;
+      }
+
+      // Clear local session/storage and send the user to Login
+      await logout();
+      setDeleteModalVisible(false);
+      setDeleteConfirmText('');
+      navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+    } catch (err) {
+      console.log('Delete account error:', err?.message);
+      Alert.alert(
+        'Delete Account Failed',
+        err?.response?.data?.message || 'Something went wrong. Please try again.'
+      );
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
   const handleMenuItemPress = (item) => {
+    if (item.action === 'delete-account') {
+      openDeleteModal();
+      return;
+    }
     if (item.route) {
       navigation.navigate(item.route);
     } else if (item.label === 'Contact Us') {
@@ -203,12 +272,12 @@ export default function ProfileScreen() {
 
   const initials = currentUser?.name
     ? currentUser.name
-        .split(' ')
-        .filter(Boolean)
-        .map((n) => n[0])
-        .join('')
-        .substring(0, 2)
-        .toUpperCase()
+      .split(' ')
+      .filter(Boolean)
+      .map((n) => n[0])
+      .join('')
+      .substring(0, 2)
+      .toUpperCase()
     : 'DS';
 
   const avatarUri = currentUser?.profile_image || currentUser?.image;
@@ -390,7 +459,14 @@ export default function ProfileScreen() {
                   <View style={[styles.menuIcon, { backgroundColor: item.color + '15' }]}>
                     <Ionicons name={item.icon} size={18} color={item.color} />
                   </View>
-                  <Text style={styles.menuLabel}>{item.label}</Text>
+                  <Text
+                    style={[
+                      styles.menuLabel,
+                      item.action === 'delete-account' && styles.menuLabelDanger,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
                   <Ionicons name="chevron-forward" size={15} color="#9E8E93" />
                 </TouchableOpacity>
               ))}
@@ -404,8 +480,88 @@ export default function ProfileScreen() {
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
 
-        <Text style={styles.version}>Divya Shakti v1.0.0</Text>
+        {/* Danger Zone — Delete Account (last) */}
+        <View style={styles.menuSection}>
+          <Text style={styles.sectionTitle}>Danger Zone</Text>
+          <View style={styles.menuCard}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={openDeleteModal}
+              activeOpacity={0.6}
+            >
+              <View style={[styles.menuIcon, { backgroundColor: '#DC262615' }]}>
+                <Ionicons name="trash-outline" size={18} color="#DC2626" />
+              </View>
+              <Text style={[styles.menuLabel, styles.menuLabelDanger]}>Delete Account</Text>
+              <Ionicons name="chevron-forward" size={15} color="#9E8E93" />
+            </TouchableOpacity>
+          </View>
+        </View>
+        <Text style={styles.version}>Divy Shakti v1.0.0</Text>
       </ScrollView>
+
+      {/* Delete Account Modal */}
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeDeleteModal}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalCard}>
+            <View style={styles.modalIconBox}>
+              <Ionicons name="warning-outline" size={26} color="#DC2626" />
+            </View>
+            <Text style={styles.modalTitle}>Delete Account</Text>
+            <Text style={styles.modalDesc}>
+              This action is permanent and cannot be undone. Your profile, wallet balance, and
+              order history will be permanently deleted.
+            </Text>
+            <Text style={styles.modalInstruction}>
+              Type <Text style={styles.modalInstructionBold}>delete</Text> below to confirm.
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={deleteConfirmText}
+              onChangeText={setDeleteConfirmText}
+              placeholder="Type delete"
+              placeholderTextColor="#C5B8BD"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="off"
+              editable={!deletingAccount}
+            />
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={closeDeleteModal}
+                activeOpacity={0.7}
+                disabled={deletingAccount}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalDeleteBtn,
+                  (!isDeleteConfirmed || deletingAccount) && styles.modalDeleteBtnDisabled,
+                ]}
+                onPress={handleDeleteAccount}
+                activeOpacity={0.8}
+                disabled={!isDeleteConfirmed || deletingAccount}
+              >
+                {deletingAccount ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalDeleteText}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -685,6 +841,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#2A1E24',
   },
+  menuLabelDanger: {
+    color: '#DC2626',
+  },
   logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -707,5 +866,102 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#C5B8BD',
     textAlign: 'center',
+  },
+  // Delete account modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(42, 30, 36, 0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 22,
+    alignItems: 'center',
+  },
+  modalIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: 'rgba(220, 38, 38, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  modalTitle: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 18,
+    color: '#2A1E24',
+    marginBottom: 8,
+  },
+  modalDesc: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    color: '#6B5B60',
+    textAlign: 'center',
+    lineHeight: 19,
+    marginBottom: 14,
+  },
+  modalInstruction: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    color: '#2A1E24',
+    marginBottom: 10,
+    alignSelf: 'flex-start',
+  },
+  modalInstructionBold: {
+    fontFamily: 'Poppins_700Bold',
+    color: '#DC2626',
+  },
+  modalInput: {
+    width: '100%',
+    borderWidth: 1.5,
+    borderColor: '#F0EAED',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 14,
+    color: '#2A1E24',
+    backgroundColor: '#FAF7F8',
+    marginBottom: 18,
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 10,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F0EAED',
+  },
+  modalCancelText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 14,
+    color: '#2A1E24',
+  },
+  modalDeleteBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#DC2626',
+  },
+  modalDeleteBtnDisabled: {
+    backgroundColor: '#F1A9A9',
+  },
+  modalDeleteText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 14,
+    color: '#FFFFFF',
   },
 });

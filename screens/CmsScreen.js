@@ -188,7 +188,7 @@ export default function CmsScreen({ route, navigation }) {
                   </Text>
                 </View>
               ) : (
-                <Text style={styles.updatedText}>Official Divya Shakti Document</Text>
+                <Text style={styles.updatedText}>Official Divy Shakti Document</Text>
               )}
             </View>
           </View>
@@ -206,7 +206,7 @@ export default function CmsScreen({ route, navigation }) {
           <View style={styles.footerContainer}>
             <Ionicons name="shield-outline" size={16} color="#8C7A82" />
             <Text style={styles.footerText}>
-              Divya Shakti — Empowering Devotion & Community
+              Divy Shakti — Empowering Devotion & Community
             </Text>
           </View>
         </ScrollView>

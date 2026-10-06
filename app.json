@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "Divya Shakti",
+    "name": "Divy Shakti",
     "slug": "divy-shakti",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/logo.png",
+    "icon": "./assets/logo-square.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/logo.png",
+      "image": "./assets/logo-square.png",
       "resizeMode": "contain",
       "backgroundColor": "#FAF7F8"
     },
@@ -17,11 +17,12 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/logo.png",
+        "foregroundImage": "./assets/logo-square.png",
         "backgroundColor": "#FAF7F8"
       },
       "edgeToEdgeEnabled": true,
-      "softwareKeyboardLayoutMode": "resize"
+      "softwareKeyboardLayoutMode": "resize",
+      "package": "com.visiontechnolabs.divyshakti"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -30,6 +31,13 @@
       "expo-font",
       "expo-router",
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "88cc3b82-23c8-4a73-b182-2541c94be9ed"
+      }
+    },
+    "owner": "testing0027"
   }
 }

@@ -70,7 +70,7 @@ export default function OrderPlacedScreen({ route, navigation }) {
             <Text style={styles.receiptLabel}>Payment Method</Text>
             <View style={styles.paymentMethodPill}>
               <Ionicons name="wallet" size={14} color="#E64A78" />
-              <Text style={styles.paymentMethodText}>Divya Shakti Wallet</Text>
+              <Text style={styles.paymentMethodText}>Divy Shakti Wallet</Text>
             </View>
           </View>
 

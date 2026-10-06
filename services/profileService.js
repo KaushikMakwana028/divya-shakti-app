@@ -143,6 +143,52 @@ class ProfileService {
             };
         }
     }
+
+    // ─────────────────────────────────────────
+    // Delete Account
+    // DELETE https://divyshakti.visiontechnolabs.com/api/delete-account
+    // (relative path — this.api already carries the base URL + auth token)
+    // ─────────────────────────────────────────
+    async deleteAccount() {
+        try {
+            const token = await storageService.getToken();
+            if (!token) {
+                return {
+                    success: false,
+                    message: 'User is not logged in',
+                    data: null,
+                };
+            }
+
+            const response = await this.api.delete('/delete-account');
+
+            if (response.data && response.data.status) {
+                // Clear any locally cached user/session data
+                await storageService.clearAll();
+                return {
+                    success: true,
+                    data: response.data.data || null,
+                    message: response.data.message || 'Account deleted successfully',
+                };
+            }
+
+            return {
+                success: false,
+                message: response.data?.message || 'Failed to delete account',
+                data: null,
+            };
+        } catch (error) {
+            console.error('ProfileService deleteAccount error:', error.response?.data || error.message);
+            return {
+                success: false,
+                message:
+                    error.response?.data?.message ||
+                    error.message ||
+                    'Failed to delete account',
+                data: null,
+            };
+        }
+    }
 }
 
 export default new ProfileService();

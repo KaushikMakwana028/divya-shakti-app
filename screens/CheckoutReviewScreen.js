@@ -593,7 +593,7 @@ export default function CheckoutReviewScreen({ route, navigation }) {
           <View style={styles.cardHeader}>
             <View style={styles.cardHeaderLeft}>
               <Ionicons name="wallet-outline" size={18} color="#E64A78" />
-              <Text style={styles.cardTitle}>Payment: Divya Shakti Wallet</Text>
+              <Text style={styles.cardTitle}>Payment: Divy Shakti Wallet</Text>
             </View>
           </View>
 

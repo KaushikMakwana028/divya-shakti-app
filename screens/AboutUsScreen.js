@@ -81,7 +81,7 @@ export default function AboutUsScreen({ navigation }) {
               <Ionicons name="sparkles" size={32} color="#FFFFFF" />
             </View>
           </View>
-          <Text style={styles.heroBrandName}>Divya Shakti</Text>
+          <Text style={styles.heroBrandName}>Divy Shakti</Text>
           <View style={styles.heroTaglinePill}>
             <Text style={styles.heroTaglineText}>DIVINE WELLNESS & PROSPERITY</Text>
           </View>
@@ -116,7 +116,7 @@ export default function AboutUsScreen({ navigation }) {
             <Text style={styles.sectionTitle}>Who We Are</Text>
           </View>
           <Text style={styles.bodyParagraph}>
-            Divya Shakti was born with a profound vision: to bring ancient Indian wellness
+            Divy Shakti was born with a profound vision: to bring ancient Indian wellness
             traditions into modern homes while creating sustainable economic opportunities for
             everyone.
           </Text>
@@ -272,9 +272,9 @@ export default function AboutUsScreen({ navigation }) {
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Text style={styles.footerAppVersion}>Divya Shakti Mobile App v1.0.0</Text>
+          <Text style={styles.footerAppVersion}>Divy Shakti Mobile App v1.0.0</Text>
           <Text style={styles.footerNote}>Nurturing Health • Inspiring Prosperity</Text>
-          <Text style={styles.footerCopyright}>© 2026 Divya Shakti. All rights reserved.</Text>
+          <Text style={styles.footerCopyright}>© 2026 Divy Shakti. All rights reserved.</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
