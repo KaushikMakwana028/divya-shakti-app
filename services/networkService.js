@@ -9,12 +9,14 @@ class NetworkService {
     // Get Downline Referrals & Summary
     // GET /api/get_referrals
     // ─────────────────────────────────────────
-    async getReferrals() {
+    async getReferrals(view = 'my') {
         try {
             const response = await this.api.get('/get_referrals');
             if (response.data && response.data.status) {
                 const rawData = response.data.data;
                 let referralsList = [];
+                let treeData = [];
+                let myTreeData = [];
                 let summaryData = {
                     total_referrals: 0,
                     active_referrals: 0,
@@ -27,6 +29,12 @@ class NetworkService {
                 } else if (rawData && typeof rawData === 'object') {
                     if (Array.isArray(rawData.referrals)) {
                         referralsList = rawData.referrals;
+                    }
+                    if (Array.isArray(rawData.tree)) {
+                        treeData = rawData.tree;
+                    }
+                    if (Array.isArray(rawData.my_tree)) {
+                        myTreeData = rawData.my_tree;
                     }
                     summaryData = {
                         total_referrals: rawData.total_referrals ?? rawData.total ?? referralsList.length,
@@ -44,6 +52,8 @@ class NetworkService {
 
                 return {
                     success: true,
+                    tree: treeData,
+                    my_tree: myTreeData,
                     referrals: Array.isArray(referralsList) ? referralsList : [],
                     summary: summaryData,
                     message: response.data.message || 'Referrals fetched successfully',
