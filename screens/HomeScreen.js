@@ -17,6 +17,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
 import homeService from "../services/homeService";
+import Alert from "../services/alertService";
 
 const { width } = Dimensions.get("window");
 
@@ -267,12 +268,17 @@ export default function HomeScreen({ navigation }) {
   const formatDate = (dateStr) => {
     if (!dateStr) return "";
     try {
-      const d = new Date(dateStr.replace(/-/g, "/"));
+      let s = String(dateStr).trim().replace(" ", "T");
+      if (!s.includes("+") && !s.includes("Z") && !s.includes("-", 10)) {
+        s += "+05:30";
+      }
+      const d = new Date(s);
       if (isNaN(d.getTime())) return dateStr;
       return d.toLocaleDateString("en-IN", {
         day: "numeric",
         month: "short",
         year: "numeric",
+        timeZone: "Asia/Kolkata",
       });
     } catch {
       return dateStr;

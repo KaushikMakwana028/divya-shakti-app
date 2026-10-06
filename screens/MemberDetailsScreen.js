@@ -124,7 +124,7 @@ export default function MemberDetailsScreen({ route, navigation }) {
                             {member?.status || (member?.is_profile_active ? 'Active' : 'Inactive')}
                         </Text>
                         <Text style={styles.joinedDate}>
-                            · Joined {member?.joined || (member?.registered_at ? new Date(member.registered_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Recently')}
+                            · Joined {member?.joined || (member?.registered_at ? new Date(member.registered_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : 'Recently')}
                         </Text>
                     </View>
                 </View>

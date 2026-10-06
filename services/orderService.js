@@ -14,6 +14,7 @@ class OrderService {
     async placeOrder({
         product_id = null,
         quantity = null,
+        size = null,
         address_id = null,
         payment_method = 'wallet',
         pay_now = 1,
@@ -24,6 +25,9 @@ class OrderService {
             if (product_id !== null && product_id !== undefined && product_id !== '') {
                 payload.product_id = Number(product_id);
                 payload.quantity = Number(quantity) || 1;
+                if (size) {
+                    payload.size = size;
+                }
             }
             if (address_id !== null && address_id !== undefined && address_id !== '') {
                 payload.address_id = Number(address_id);
@@ -71,8 +75,8 @@ class OrderService {
     }
 
     // Checkout preview helper (does not create orders in database)
-    async getCheckoutPreview({ product_id = null, quantity = null, address_id = null } = {}) {
-        return this.placeOrder({ product_id, quantity, address_id, preview: 1 });
+    async getCheckoutPreview({ product_id = null, quantity = null, size = null, address_id = null } = {}) {
+        return this.placeOrder({ product_id, quantity, size, address_id, preview: 1 });
     }
 
     // Alias for verifyOrderPayment

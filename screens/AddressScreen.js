@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Alert,
   Modal,
   RefreshControl,
   KeyboardAvoidingView,
@@ -15,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Alert from '../services/alertService';
 import addressService from '../services/addressService';
 import { useAuth } from '../contexts/AuthContext';
 

@@ -8,7 +8,6 @@ import {
   TextInput,
   Image,
   ActivityIndicator,
-  Alert,
   Modal,
   RefreshControl,
   KeyboardAvoidingView,
@@ -23,6 +22,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import walletService from "../services/walletService";
 import { useAuth } from "../contexts/AuthContext";
+import { showAlert } from "../contexts/AlertContext";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SHEET_MAX_HEIGHT = Math.min(Math.round(SCREEN_HEIGHT * 0.88), 750);
@@ -149,28 +149,34 @@ export default function WalletScreen({ navigation }) {
   }, [fetchWalletData]);
 
   // ─────────────────────────────────────────
-  // Proof Image Picking
+  // Proof Image Picking (No crop for receipts)
   // ─────────────────────────────────────────
   const handlePickCamera = async () => {
     setPickerModalVisible(false);
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert(
-          "Permission Denied",
-          "Camera permission is required to capture payment receipt.",
-        );
+        showAlert({
+          title: "Permission Denied",
+          message: "Camera permission is required to capture payment receipt.",
+          type: "warning",
+        });
         return;
       }
       const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        quality: 0.8,
+        allowsEditing: false, // Don't crop receipt! Captures full image
+        quality: 0.9,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setProofFile(result.assets[0]);
       }
     } catch (err) {
       console.error("Camera error:", err);
+      showAlert({
+        title: "Error",
+        message: "Unable to capture photo.",
+        type: "error",
+      });
     }
   };
 
@@ -180,22 +186,28 @@ export default function WalletScreen({ navigation }) {
       const { status } =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert(
-          "Permission Denied",
-          "Gallery permission is required to select payment receipt.",
-        );
+        showAlert({
+          title: "Permission Denied",
+          message: "Gallery permission is required to select payment receipt.",
+          type: "warning",
+        });
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
-        allowsEditing: true,
-        quality: 0.8,
+        allowsEditing: false, // Don't crop receipt! Takes full image
+        quality: 0.9,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setProofFile(result.assets[0]);
       }
     } catch (err) {
       console.error("Gallery error:", err);
+      showAlert({
+        title: "Error",
+        message: "Unable to select photo.",
+        type: "error",
+      });
     }
   };
 
@@ -205,15 +217,20 @@ export default function WalletScreen({ navigation }) {
   const handleSubmitDeposit = async () => {
     const amountNum = parseFloat(depositAmount);
     if (isNaN(amountNum) || amountNum <= 0) {
-      Alert.alert("Validation Error", "Please enter a valid deposit amount.");
+      showAlert({
+        title: "Validation Error",
+        message: "Please enter a valid deposit amount.",
+        type: "warning",
+      });
       return;
     }
 
     if (paymentMethod === "online" && !proofFile) {
-      Alert.alert(
-        "Proof Required",
-        "Please attach a payment receipt screenshot for online deposits.",
-      );
+      showAlert({
+        title: "Proof Required",
+        message: "Please attach a payment receipt screenshot for online deposits.",
+        type: "warning",
+      });
       return;
     }
 
@@ -227,24 +244,30 @@ export default function WalletScreen({ navigation }) {
       });
 
       if (res.success) {
-        Alert.alert(
-          "Request Submitted",
-          "Your wallet deposit request has been submitted successfully and is pending admin approval.",
-        );
+        showAlert({
+          title: "Request Submitted",
+          message: "Your wallet deposit request has been submitted successfully and is pending admin approval.",
+          type: "success",
+        });
         setDepositModalVisible(false);
         setProofFile(null);
         setDepositRemark("");
         setActiveTab("deposits");
         fetchWalletData();
       } else {
-        Alert.alert(
-          "Submission Failed",
-          res.message || "Unable to submit deposit request.",
-        );
+        showAlert({
+          title: "Submission Failed",
+          message: res.message || "Unable to submit deposit request.",
+          type: "error",
+        });
       }
     } catch (err) {
       console.error("Deposit submit error:", err);
-      Alert.alert("Error", "An unexpected error occurred while submitting.");
+      showAlert({
+        title: "Error",
+        message: "An unexpected error occurred while submitting.",
+        type: "error",
+      });
     } finally {
       setSubmittingDeposit(false);
     }
@@ -289,6 +312,8 @@ export default function WalletScreen({ navigation }) {
   // Format Helper for Source
   const formatSource = (source) => {
     if (!source) return "Transaction";
+    if (source === "admin_debit") return "Admin Deduction";
+    if (source === "admin_credit") return "Admin Credit";
     return source.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
@@ -296,13 +321,20 @@ export default function WalletScreen({ navigation }) {
   const formatDate = (dateStr) => {
     if (!dateStr) return "";
     try {
-      const date = new Date(dateStr.replace(" ", "T"));
+      let s = String(dateStr).trim().replace(" ", "T");
+      if (!s.includes("+") && !s.includes("Z") && !s.includes("-", 10)) {
+        s += "+05:30";
+      }
+      const date = new Date(s);
+      if (isNaN(date.getTime())) return dateStr;
       return date.toLocaleDateString("en-IN", {
         day: "numeric",
         month: "short",
         year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
+        hour12: true,
+        timeZone: "Asia/Kolkata",
       });
     } catch {
       return dateStr;
@@ -662,9 +694,20 @@ export default function WalletScreen({ navigation }) {
                           {formatSource(txn.source)}
                         </Text>
                         {txn.remark ? (
-                          <Text style={styles.txnRemark} numberOfLines={2}>
-                            {txn.remark}
-                          </Text>
+                          <View style={txn.source === "admin_debit" ? styles.txnReasonBox : null}>
+                            {txn.source === "admin_debit" ? (
+                              <View style={styles.txnReasonHeader}>
+                                <Ionicons name="alert-circle-outline" size={11} color="#DC2626" />
+                                <Text style={styles.txnReasonLabel}>Reason / Note</Text>
+                              </View>
+                            ) : null}
+                            <Text
+                              style={txn.source === "admin_debit" ? styles.txnReasonText : styles.txnRemark}
+                              numberOfLines={txn.source === "admin_debit" ? 4 : 2}
+                            >
+                              {txn.remark}
+                            </Text>
+                          </View>
                         ) : null}
                         <View style={styles.txnDateRow}>
                           <Ionicons
@@ -1038,24 +1081,59 @@ export default function WalletScreen({ navigation }) {
                     activeOpacity={0.75}
                   >
                     {proofFile ? (
-                      <View style={styles.proofPreviewRow}>
-                        <Image
-                          source={{ uri: proofFile.uri }}
-                          style={styles.proofPreviewImg}
-                        />
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.proofSuccessText}>
-                            ✓ Receipt Attached
-                          </Text>
-                          <Text style={styles.proofChangeText}>
-                            Tap to change receipt
-                          </Text>
+                      <View style={styles.proofCardAttached}>
+                        <View style={styles.proofCardHeader}>
+                          <View style={styles.proofBadgeAttached}>
+                            <Ionicons
+                              name="checkmark-circle"
+                              size={15}
+                              color="#27A462"
+                            />
+                            <Text style={styles.proofSuccessText}>
+                              Receipt Attached
+                            </Text>
+                          </View>
+                          <View style={styles.proofActionsRow}>
+                            <TouchableOpacity
+                              style={styles.proofChangeBtn}
+                              onPress={() => setPickerModalVisible(true)}
+                              activeOpacity={0.7}
+                            >
+                              <Ionicons
+                                name="camera-outline"
+                                size={14}
+                                color="#E64A78"
+                              />
+                              <Text style={styles.proofChangeText}>Change</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.proofChangeBtn, styles.proofRemoveBtn]}
+                              onPress={() => setProofFile(null)}
+                              activeOpacity={0.7}
+                            >
+                              <Ionicons
+                                name="trash-outline"
+                                size={14}
+                                color="#EF4444"
+                              />
+                              <Text
+                                style={[
+                                  styles.proofChangeText,
+                                  { color: "#EF4444" },
+                                ]}
+                              >
+                                Remove
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
                         </View>
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={22}
-                          color="#27A462"
-                        />
+                        <View style={styles.proofFullPreviewWrap}>
+                          <Image
+                            source={{ uri: proofFile.uri }}
+                            style={styles.proofFullImage}
+                            resizeMode="contain"
+                          />
+                        </View>
                       </View>
                     ) : (
                       <View style={styles.proofPlaceholderRow}>
@@ -2054,6 +2132,35 @@ const styles = StyleSheet.create({
     marginBottom: 5,
     lineHeight: 15,
   },
+  txnReasonBox: {
+    backgroundColor: "#FEF2F2",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: "#FEE2E2",
+    marginBottom: 5,
+    marginTop: 2,
+  },
+  txnReasonHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 2,
+  },
+  txnReasonLabel: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 9.5,
+    color: "#DC2626",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+  },
+  txnReasonText: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 11.5,
+    color: "#991B1B",
+    lineHeight: 16,
+  },
   txnDateRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2435,6 +2542,61 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
     padding: 14,
   },
+  proofCardAttached: {
+    backgroundColor: "#FAF7F8",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#EBE3E6",
+    padding: 12,
+  },
+  proofCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  proofBadgeAttached: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(39,164,98,0.12)",
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 20,
+  },
+  proofActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  proofChangeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#F0EAED",
+  },
+  proofRemoveBtn: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FEE2E2",
+  },
+  proofFullPreviewWrap: {
+    width: "100%",
+    height: 180,
+    borderRadius: 10,
+    backgroundColor: "#221A1E",
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  proofFullImage: {
+    width: "100%",
+    height: "100%",
+  },
   proofPlaceholderRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2478,7 +2640,6 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins_400Regular",
     fontSize: 11.5,
     color: "#E64A78",
-    marginTop: 2,
   },
   remarkInput: {
     backgroundColor: "#FAF7F8",

@@ -9,12 +9,12 @@ import {
     Platform,
     ScrollView,
     Image,
-    Alert,
     ActivityIndicator,
     Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Alert from '../services/alertService';
 import authService from '../services/authService';
 
 const logo = require('../assets/logo.png');

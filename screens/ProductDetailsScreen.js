@@ -5,7 +5,6 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   Image,
   ActivityIndicator,
   RefreshControl,
@@ -23,6 +22,7 @@ import ProfileIncompleteModal from "../components/ProfileIncompleteModal";
 import CheckoutModal from "../components/CheckoutModal";
 import { useCart } from "../contexts/CartContext";
 import { useAuth } from "../contexts/AuthContext";
+import { showAlert } from "../contexts/AlertContext";
 import productService from "../services/productService";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -50,7 +50,19 @@ export default function ProductDetailsScreen({ route, navigation }) {
   const { addToCart, getCartCount } = useCart();
   const { user, refreshProfile } = useAuth();
   const [quantity, setQuantity] = useState(1);
+  const [selectedSize, setSelectedSize] = useState(null);
   const [addingToCart, setAddingToCart] = useState(false);
+
+  // Sync selected size whenever product sizes change
+  useEffect(() => {
+    if (product?.sizes && Array.isArray(product.sizes) && product.sizes.length > 0) {
+      if (!selectedSize || !product.sizes.includes(selectedSize)) {
+        setSelectedSize(product.sizes[0]);
+      }
+    } else {
+      setSelectedSize(null);
+    }
+  }, [product?.sizes]);
 
   // Silently refresh profile on screen focus
   useFocusEffect(
@@ -379,10 +391,16 @@ export default function ProductDetailsScreen({ route, navigation }) {
     );
   }
 
+  const maxStock =
+    product.stock !== undefined && product.stock !== null
+      ? Math.max(0, Number(product.stock))
+      : 999;
   const inStock =
-    product.stock !== undefined ? product.stock > 0 : product.inStock !== false;
-  const isLowStock =
-    inStock && product.stock !== undefined && Number(product.stock) <= 5;
+    maxStock > 0 &&
+    (product.stock !== undefined ? Number(product.stock) > 0 : product.inStock !== false) &&
+    (product.status === undefined || Number(product.status) === 1);
+  const isLowStock = inStock && maxStock <= 5;
+
   const formattedPrice =
     typeof product.price === "number"
       ? `₹${product.price.toLocaleString("en-IN")}`
@@ -398,7 +416,32 @@ export default function ProductDetailsScreen({ route, navigation }) {
     typeof product.price === "number"
       ? product.price
       : parseInt(String(product.price || 0).replace(/[₹,]/g, "")) || 0;
-  const buyNowTotal = unitPrice * quantity;
+  const buyNowTotal = unitPrice * (inStock ? quantity : 0);
+  const formattedSubtotal = `₹${buyNowTotal.toLocaleString("en-IN")}`;
+
+  useEffect(() => {
+    if (inStock && maxStock > 0 && quantity > maxStock) {
+      setQuantity(maxStock);
+    }
+  }, [maxStock, inStock, quantity]);
+
+  const handleDecreaseQuantity = () => {
+    if (quantity <= 1 || !inStock) return;
+    setQuantity((prev) => Math.max(1, prev - 1));
+  };
+
+  const handleIncreaseQuantity = () => {
+    if (!inStock) return;
+    if (quantity >= maxStock) {
+      showAlert({
+        title: "Stock Limit Reached",
+        message: `Only ${maxStock} unit${maxStock === 1 ? "" : "s"} available in stock for this product.`,
+        type: "warning",
+      });
+      return;
+    }
+    setQuantity((prev) => Math.min(maxStock, prev + 1));
+  };
 
   const checkProfileCompleteness = async () => {
     let currentUser = user;
@@ -449,7 +492,20 @@ export default function ProductDetailsScreen({ route, navigation }) {
 
   const handleAddToCart = async () => {
     if (!inStock) {
-      Alert.alert("Out of Stock", "This product is currently out of stock.");
+      showAlert({
+        title: "Out of Stock",
+        message: "This product is currently out of stock.",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (quantity > maxStock) {
+      showAlert({
+        title: "Stock Limit",
+        message: `Cannot add more than ${maxStock} units.`,
+        type: "warning",
+      });
       return;
     }
 
@@ -461,16 +517,18 @@ export default function ProductDetailsScreen({ route, navigation }) {
 
     setAddingToCart(true);
     try {
-      const res = await addToCart(product, quantity);
+      const res = await addToCart(product, quantity, selectedSize);
       if (res.success) {
-        Alert.alert(
-          "Added to Cart",
-          `${product.name} (${quantity}) added to your cart!`,
-          [
+        const sizeInfo = selectedSize ? ` (Size: ${selectedSize})` : "";
+        showAlert({
+          title: "Added to Cart",
+          message: `✓ ${quantity} × ${product.name}${sizeInfo}\n\n• Unit Price: ₹${unitPrice.toLocaleString("en-IN")}\n• Total Amount: ${formattedSubtotal}\n\nItem has been successfully added to your shopping cart!`,
+          type: "cart",
+          buttons: [
             { text: "Continue Shopping", style: "cancel" },
             { text: "View Cart", onPress: () => navigation.navigate("Cart") },
           ],
-        );
+        });
       } else if (res.isUnderReview || res.isProfileIncomplete) {
         const pct =
           res.profileData?.profile_completion_percentage ??
@@ -484,10 +542,11 @@ export default function ProductDetailsScreen({ route, navigation }) {
         setProfileModalMessage(res.message || "");
         setProfileModalVisible(true);
       } else {
-        Alert.alert(
-          "Cannot Add to Cart",
-          res.message || "Failed to add product to cart.",
-        );
+        showAlert({
+          title: "Cannot Add to Cart",
+          message: res.message || "Failed to add product to cart.",
+          type: "error",
+        });
       }
     } finally {
       setAddingToCart(false);
@@ -496,7 +555,20 @@ export default function ProductDetailsScreen({ route, navigation }) {
 
   const handleBuyNow = async () => {
     if (!inStock) {
-      Alert.alert("Out of Stock", "This product is currently out of stock.");
+      showAlert({
+        title: "Out of Stock",
+        message: "This product is currently out of stock.",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (quantity > maxStock) {
+      showAlert({
+        title: "Stock Limit",
+        message: `Cannot order more than ${maxStock} units.`,
+        type: "warning",
+      });
       return;
     }
 
@@ -510,6 +582,7 @@ export default function ProductDetailsScreen({ route, navigation }) {
       isBuyNow: true,
       productId: product.id,
       quantity,
+      selectedSize,
     });
   };
 
@@ -706,6 +779,158 @@ export default function ProductDetailsScreen({ route, navigation }) {
             )}
           </View>
 
+          {/* Size Selector (Amazon / Flipkart Style) */}
+          {product.sizes && Array.isArray(product.sizes) && product.sizes.length > 0 ? (
+            <View style={styles.sizeSection}>
+              <View style={styles.sizeHeaderRow}>
+                <View style={styles.sizeHeaderLeft}>
+                  <Ionicons name="shirt-outline" size={16} color="#E64A78" />
+                  <Text style={styles.sizeSectionTitle}>Select Size</Text>
+                </View>
+                {selectedSize ? (
+                  <View style={styles.selectedSizeIndicator}>
+                    <Text style={styles.selectedSizeIndicatorLabel}>
+                      Selected: <Text style={styles.selectedSizeIndicatorValue}>{selectedSize}</Text>
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.sizesPillsContainer}
+              >
+                {product.sizes.map((sz, idx) => {
+                  const isChosen = selectedSize === sz;
+                  return (
+                    <TouchableOpacity
+                      key={`${sz}-${idx}`}
+                      style={[
+                        styles.sizeChip,
+                        isChosen && styles.sizeChipSelected,
+                      ]}
+                      activeOpacity={0.75}
+                      onPress={() => setSelectedSize(sz)}
+                    >
+                      {isChosen && (
+                        <Ionicons
+                          name="checkmark"
+                          size={13}
+                          color="#FFFFFF"
+                          style={styles.sizeCheckIcon}
+                        />
+                      )}
+                      <Text
+                        style={[
+                          styles.sizeChipText,
+                          isChosen && styles.sizeChipTextSelected,
+                        ]}
+                      >
+                        {sz}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          {/* Quantity & Order Info Card */}
+          <View style={styles.quantityCard}>
+            <View style={styles.quantityHeaderRow}>
+              <View style={styles.quantityTitleGroup}>
+                <View style={styles.quantityTitleRow}>
+                  <Ionicons name="layers-outline" size={16} color="#E64A78" />
+                  <Text style={styles.quantityTitle}>Select Quantity</Text>
+                </View>
+                <Text style={styles.quantitySubtitle}>
+                  {inStock
+                    ? `${maxStock} unit${maxStock === 1 ? "" : "s"} available in stock`
+                    : "Currently out of stock"}
+                </Text>
+              </View>
+
+              {/* Stepper Controls */}
+              <View
+                style={[
+                  styles.quantityStepper,
+                  !inStock && styles.quantityStepperDisabled,
+                ]}
+              >
+                <TouchableOpacity
+                  style={[
+                    styles.quantityBtn,
+                    (quantity <= 1 || !inStock) && styles.quantityBtnDisabled,
+                  ]}
+                  onPress={handleDecreaseQuantity}
+                  activeOpacity={0.7}
+                  disabled={quantity <= 1 || !inStock}
+                >
+                  <Ionicons
+                    name="remove"
+                    size={18}
+                    color={quantity <= 1 || !inStock ? "#C4B8BC" : "#2A1E24"}
+                  />
+                </TouchableOpacity>
+
+                <View style={styles.quantityDivider} />
+                <Text style={styles.quantityText}>{inStock ? quantity : 0}</Text>
+                <View style={styles.quantityDivider} />
+
+                <TouchableOpacity
+                  style={[
+                    styles.quantityBtn,
+                    (quantity >= maxStock || !inStock) && styles.quantityBtnDisabled,
+                  ]}
+                  onPress={handleIncreaseQuantity}
+                  activeOpacity={0.7}
+                  disabled={quantity >= maxStock || !inStock}
+                >
+                  <Ionicons
+                    name="add"
+                    size={18}
+                    color={quantity >= maxStock || !inStock ? "#C4B8BC" : "#2A1E24"}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Live Pricing Breakdown Bar */}
+            <View style={styles.priceBreakdownRow}>
+              <View style={styles.priceBreakdownItem}>
+                <Text style={styles.priceBreakdownLabel}>Unit Price</Text>
+                <Text style={styles.priceBreakdownValue}>₹{unitPrice.toLocaleString("en-IN")}</Text>
+              </View>
+
+              <View style={styles.priceBreakdownDivider} />
+
+              <View style={styles.priceBreakdownItem}>
+                <Text style={styles.priceBreakdownLabel}>Selected Qty</Text>
+                <Text style={styles.priceBreakdownValue}>
+                  {inStock ? quantity : 0} {quantity === 1 ? "Unit" : "Units"}
+                </Text>
+              </View>
+
+              <View style={styles.priceBreakdownDivider} />
+
+              <View style={styles.priceBreakdownItem}>
+                <Text style={styles.priceBreakdownLabel}>Total Amount</Text>
+                <Text style={styles.priceBreakdownTotal}>{formattedSubtotal}</Text>
+              </View>
+            </View>
+
+            {/* In-Stock or Max Limit Banner */}
+            {inStock && quantity >= maxStock && (
+              <View style={styles.stockNoticeBox}>
+                <Ionicons name="alert-circle" size={14} color="#D97706" />
+                <Text style={styles.stockNoticeText}>
+                  Maximum available stock selected ({maxStock} units).
+                </Text>
+              </View>
+            )}
+          </View>
+
           <View style={styles.divider} />
 
           {/* Description */}
@@ -734,43 +959,6 @@ export default function ProductDetailsScreen({ route, navigation }) {
                 </View>
               </>
             )}
-
-          {/* Quantity Selector — redesigned as a single unified pill stepper */}
-          <View style={styles.quantitySection}>
-            <Text style={styles.sectionTitle}>Quantity</Text>
-            <View style={styles.quantityStepper}>
-              <TouchableOpacity
-                style={[
-                  styles.quantityBtn,
-                  quantity <= 1 && styles.quantityBtnDisabled,
-                ]}
-                onPress={() => setQuantity(Math.max(1, quantity - 1))}
-                activeOpacity={0.7}
-                disabled={quantity <= 1}
-              >
-                <Ionicons
-                  name="remove"
-                  size={18}
-                  color={quantity <= 1 ? "#C4B8BC" : "#2A1E24"}
-                />
-              </TouchableOpacity>
-              <View style={styles.quantityDivider} />
-              <Text style={styles.quantityText}>{quantity}</Text>
-              <View style={styles.quantityDivider} />
-              <TouchableOpacity
-                style={styles.quantityBtn}
-                onPress={() => setQuantity(quantity + 1)}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="add" size={18} color="#2A1E24" />
-              </TouchableOpacity>
-            </View>
-            {quantity > 1 && (
-              <Text style={styles.quantitySubtotal}>
-                Subtotal: ₹{buyNowTotal.toLocaleString("en-IN")}
-              </Text>
-            )}
-          </View>
         </View>
       </ScrollView>
 
@@ -800,7 +988,7 @@ export default function ProductDetailsScreen({ route, navigation }) {
                   !inStock && styles.addToCartTextDisabled,
                 ]}
               >
-                Add to Cart
+                {inStock ? `Add to Cart (${quantity})` : "Out of Stock"}
               </Text>
             </>
           )}
@@ -816,7 +1004,9 @@ export default function ProductDetailsScreen({ route, navigation }) {
           activeOpacity={0.8}
         >
           <Ionicons name="flash" size={20} color="#FFFFFF" />
-          <Text style={styles.buyNowText}>Buy Now</Text>
+          <Text style={styles.buyNowText}>
+            {inStock ? `Buy Now • ${formattedSubtotal}` : "Unavailable"}
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -831,6 +1021,7 @@ export default function ProductDetailsScreen({ route, navigation }) {
             name: product.name,
             price: unitPrice,
             quantity: quantity,
+            size: selectedSize,
             image: product.image || product.product_image,
           },
         ]}
@@ -838,6 +1029,7 @@ export default function ProductDetailsScreen({ route, navigation }) {
         isBuyNow={true}
         productId={product.id}
         quantity={quantity}
+        size={selectedSize}
       />
 
       {/* Profile Incomplete Modal Alert */}
@@ -1637,46 +1829,130 @@ const styles = StyleSheet.create({
     color: "#2A1E24",
   },
 
-  /* ── Quantity Stepper — single unified pill instead of 3 separate boxes ── */
-  quantitySection: {
-    marginBottom: 8,
+  /* ── Interactive Quantity Card & Stepper ── */
+  quantityCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: "#F0EAED",
+    marginBottom: 16,
+    shadowColor: "#2A1E24",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  quantityHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  quantityTitleGroup: {
+    flex: 1,
+    marginRight: 12,
+  },
+  quantityTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 2,
+  },
+  quantityTitle: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 14.5,
+    color: "#2A1E24",
+  },
+  quantitySubtitle: {
+    fontFamily: "Poppins_400Regular",
+    fontSize: 11.5,
+    color: "#8C7A82",
   },
   quantityStepper: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
+    backgroundColor: "#FFF8FA",
+    borderRadius: 14,
     borderWidth: 1.5,
-    borderColor: "#F0EAED",
+    borderColor: "#F3D5DF",
     overflow: "hidden",
   },
+  quantityStepperDisabled: {
+    opacity: 0.5,
+    backgroundColor: "#F9FAFB",
+    borderColor: "#E5E7EB",
+  },
   quantityBtn: {
-    width: 46,
-    height: 46,
+    width: 38,
+    height: 38,
     alignItems: "center",
     justifyContent: "center",
   },
   quantityBtnDisabled: {
-    opacity: 0.5,
+    opacity: 0.35,
   },
   quantityDivider: {
     width: 1,
-    height: 24,
-    backgroundColor: "#F0EAED",
+    height: 20,
+    backgroundColor: "#F3D5DF",
   },
   quantityText: {
     fontFamily: "Poppins_700Bold",
-    fontSize: 16,
+    fontSize: 15,
     color: "#2A1E24",
-    minWidth: 40,
+    minWidth: 36,
     textAlign: "center",
   },
-  quantitySubtotal: {
+  priceBreakdownRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FAF7F8",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  priceBreakdownItem: {
+    flex: 1,
+    alignItems: "center",
+  },
+  priceBreakdownDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: "#EBDDE2",
+  },
+  priceBreakdownLabel: {
     fontFamily: "Poppins_500Medium",
-    fontSize: 12,
+    fontSize: 10.5,
     color: "#8C7A82",
-    marginTop: 8,
+    marginBottom: 2,
+  },
+  priceBreakdownValue: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 12.5,
+    color: "#2A1E24",
+  },
+  priceBreakdownTotal: {
+    fontFamily: "Poppins_700Bold",
+    fontSize: 13.5,
+    color: "#E64A78",
+  },
+  stockNoticeBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FEF3C7",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    marginTop: 10,
+  },
+  stockNoticeText: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 11,
+    color: "#B45309",
+    flex: 1,
   },
 
   /* ── Bottom Bar ── */
@@ -1745,6 +2021,90 @@ const styles = StyleSheet.create({
   buyNowText: {
     fontFamily: "Poppins_600SemiBold",
     fontSize: 14,
+    color: "#FFFFFF",
+  },
+  /* ── Size Selector ── */
+  sizeSection: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: "#F5EFF2",
+  },
+  sizeHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  sizeHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  sizeSectionTitle: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 14,
+    color: "#2A1E24",
+  },
+  selectedSizeIndicator: {
+    backgroundColor: "#FFF0F4",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#FAD2DE",
+  },
+  selectedSizeIndicatorLabel: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 11,
+    color: "#8C7A82",
+  },
+  selectedSizeIndicatorValue: {
+    fontFamily: "Poppins_700Bold",
+    fontSize: 11,
+    color: "#E64A78",
+  },
+  sizesPillsContainer: {
+    flexDirection: "row",
+    gap: 8,
+    paddingVertical: 4,
+    paddingRight: 10,
+  },
+  sizeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 48,
+    height: 42,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  sizeChipSelected: {
+    borderColor: "#E64A78",
+    backgroundColor: "#E64A78",
+    shadowColor: "#E64A78",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  sizeCheckIcon: {
+    marginRight: 4,
+  },
+  sizeChipText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 13,
+    color: "#374151",
+  },
+  sizeChipTextSelected: {
     color: "#FFFFFF",
   },
 });

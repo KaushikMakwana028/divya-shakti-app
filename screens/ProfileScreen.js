@@ -5,7 +5,6 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   Image,
   RefreshControl,
   Modal,
@@ -18,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
+import { showAlert } from '../contexts/AlertContext';
 import profileService from '../services/profileService';
 import homeService from '../services/homeService';
 import orderService from '../services/orderService';
@@ -159,17 +159,22 @@ export default function ProfileScreen() {
   }, [fetchAllData, refreshProfile]);
 
   const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Logout',
-        style: 'destructive',
-        onPress: async () => {
-          await logout();
-          navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+    showAlert({
+      title: 'Logout',
+      message: 'Are you sure you want to logout?',
+      type: 'confirm',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            await logout();
+            navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+          },
         },
-      },
-    ]);
+      ],
+    });
   };
 
   const openDeleteModal = () => {
@@ -203,10 +208,11 @@ export default function ProfileScreen() {
       const response = await profileService.deleteAccount();
 
       if (response && response.success === false) {
-        Alert.alert(
-          'Delete Account Failed',
-          response.message || 'We could not delete your account. Please try again.'
-        );
+        showAlert({
+          title: 'Delete Account Failed',
+          message: response.message || 'We could not delete your account. Please try again.',
+          type: 'error',
+        });
         return;
       }
 
@@ -217,10 +223,11 @@ export default function ProfileScreen() {
       navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
     } catch (err) {
       console.log('Delete account error:', err?.message);
-      Alert.alert(
-        'Delete Account Failed',
-        err?.response?.data?.message || 'Something went wrong. Please try again.'
-      );
+      showAlert({
+        title: 'Delete Account Failed',
+        message: err?.response?.data?.message || 'Something went wrong. Please try again.',
+        type: 'error',
+      });
     } finally {
       setDeletingAccount(false);
     }
@@ -234,13 +241,18 @@ export default function ProfileScreen() {
     if (item.route) {
       navigation.navigate(item.route);
     } else if (item.label === 'Contact Us') {
-      Alert.alert(
-        'Contact Support',
-        'Have questions or need assistance? Reach out to our dedicated support team:\n\nEmail: support@divyashakti.com\nHelpline: +91 98765 43210\nHours: Mon - Sat (9:00 AM - 7:00 PM)',
-        [{ text: 'OK', style: 'default' }]
-      );
+      showAlert({
+        title: 'Contact Support',
+        message: 'Have questions or need assistance? Reach out to our dedicated support team:\n\nEmail: support@divyashakti.com\nHelpline: +91 98765 43210\nHours: Mon - Sat (9:00 AM - 7:00 PM)',
+        type: 'info',
+        buttons: [{ text: 'OK', style: 'default' }],
+      });
     } else {
-      Alert.alert(item.label, `${item.label} will be available soon!`);
+      showAlert({
+        title: item.label,
+        message: `${item.label} will be available soon!`,
+        type: 'info',
+      });
     }
   };
 

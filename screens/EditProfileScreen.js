@@ -8,7 +8,6 @@ import {
   TextInput,
   Image,
   ActivityIndicator,
-  Alert,
   Modal,
   RefreshControl,
   KeyboardAvoidingView,
@@ -19,28 +18,25 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useNavigation } from "@react-navigation/native";
 import { useAuth } from "../contexts/AuthContext";
+import { showAlert } from "../contexts/AlertContext";
 import profileService from "../services/profileService";
 
 export default function EditProfileScreen() {
   const navigation = useNavigation();
   const { user, refreshProfile } = useAuth();
 
-  // Screen State
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Expanded Accordion Sections
   const [expanded, setExpanded] = useState({
     personal: true,
     kyc: false,
     bank: false,
   });
 
-  // Which text input currently has focus — drives the highlighted border
   const [focusedField, setFocusedField] = useState(null);
 
-  // Profile Form Fields
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -57,29 +53,26 @@ export default function EditProfileScreen() {
     branch_name: "",
   });
 
-  // Image Previews (remote URL or local URI)
   const [previews, setPreviews] = useState({
     profile_image: null,
     aadhar_image: null,
     pan_image: null,
   });
 
-  // Picked files for multipart upload
   const [selectedFiles, setSelectedFiles] = useState({
     profile_image: null,
     aadhar_image: null,
     pan_image: null,
   });
 
-  // Raw API Profile details
   const [profileData, setProfileData] = useState(null);
 
-  // Image Picker Modal State
   const [pickerModalVisible, setPickerModalVisible] = useState(false);
   const [activePickerField, setActivePickerField] = useState(null);
-
-  // Account Type Modal State
   const [accountTypeModalVisible, setAccountTypeModalVisible] = useState(false);
+
+  const [viewingDocUri, setViewingDocUri] = useState(null);
+  const [viewingDocTitle, setViewingDocTitle] = useState("");
 
   // ─────────────────────────────────────────────────────────────
   // Load Profile Data
@@ -121,7 +114,11 @@ export default function EditProfileScreen() {
             await refreshProfile();
           }
         } else if (res.message && res.message !== "User is not logged in") {
-          Alert.alert("Notice", res.message);
+          showAlert({
+            title: "Notice",
+            message: res.message,
+            type: "info",
+          });
         }
       } catch (err) {
         console.error("Error loading profile in EditProfileScreen:", err);
@@ -142,15 +139,10 @@ export default function EditProfileScreen() {
     loadProfile(false);
   }, [loadProfile]);
 
-  // Toggle Accordion Section
   const toggleSection = (sectionKey) => {
-    setExpanded((prev) => ({
-      ...prev,
-      [sectionKey]: !prev[sectionKey],
-    }));
+    setExpanded((prev) => ({ ...prev, [sectionKey]: !prev[sectionKey] }));
   };
 
-  // Update Field Handler
   const updateField = (key, val) => {
     setForm((prev) => ({ ...prev, [key]: val }));
   };
@@ -159,7 +151,13 @@ export default function EditProfileScreen() {
   // Section Completion Counts
   // ─────────────────────────────────────────────────────────────
   const personalStats = useMemo(() => {
-    const fields = [form.name, form.email, form.phone, form.gender, form.address];
+    const fields = [
+      form.name,
+      form.email,
+      form.phone,
+      form.gender,
+      form.address,
+    ];
     const filled = fields.filter((f) => !!f && String(f).trim() !== "").length;
     return { filled, total: 5, isComplete: filled === 5 };
   }, [form.name, form.email, form.phone, form.gender, form.address]);
@@ -198,9 +196,6 @@ export default function EditProfileScreen() {
     form.branch_name,
   ]);
 
-  // Overall completion across all three sections — powers the summary bar
-  // in the header card so the user can see total progress without
-  // expanding every accordion.
   const overallStats = useMemo(() => {
     const filled = personalStats.filled + kycStats.filled + bankStats.filled;
     const total = personalStats.total + kycStats.total + bankStats.total;
@@ -215,11 +210,16 @@ export default function EditProfileScreen() {
       : "#E64A78";
 
   // ─────────────────────────────────────────────────────────────
-  // Image Picker Logic
+  // Image Picker Logic (documents are never cropped)
   // ─────────────────────────────────────────────────────────────
   const openImagePickerModal = (field) => {
     setActivePickerField(field);
     setPickerModalVisible(true);
+  };
+
+  const handleRemoveImage = (field) => {
+    setPreviews((prev) => ({ ...prev, [field]: null }));
+    setSelectedFiles((prev) => ({ ...prev, [field]: null }));
   };
 
   const handlePickCamera = async () => {
@@ -227,18 +227,23 @@ export default function EditProfileScreen() {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert(
-          "Permission Denied",
-          "Camera permission is required to capture photos.",
-        );
+        showAlert({
+          title: "Permission Denied",
+          message: "Camera permission is required to capture photos.",
+          type: "warning",
+        });
         return;
       }
 
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
+      const isDocument =
+        activePickerField === "aadhar_image" ||
+        activePickerField === "pan_image";
+
+      const cameraOptions = isDocument
+        ? { allowsEditing: false, quality: 0.9 }
+        : { allowsEditing: true, aspect: [1, 1], quality: 0.85 };
+
+      const result = await ImagePicker.launchCameraAsync(cameraOptions);
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
@@ -247,7 +252,11 @@ export default function EditProfileScreen() {
       }
     } catch (err) {
       console.error("Camera capture error:", err);
-      Alert.alert("Error", "Unable to capture photo.");
+      showAlert({
+        title: "Error",
+        message: "Unable to capture photo.",
+        type: "error",
+      });
     }
   };
 
@@ -257,19 +266,28 @@ export default function EditProfileScreen() {
       const { status } =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert(
-          "Permission Denied",
-          "Gallery permission is required to select photos.",
-        );
+        showAlert({
+          title: "Permission Denied",
+          message: "Gallery permission is required to select photos.",
+          type: "warning",
+        });
         return;
       }
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
+      const isDocument =
+        activePickerField === "aadhar_image" ||
+        activePickerField === "pan_image";
+
+      const galleryOptions = isDocument
+        ? { mediaTypes: ["images"], allowsEditing: false, quality: 0.9 }
+        : {
+            mediaTypes: ["images"],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.85,
+          };
+
+      const result = await ImagePicker.launchImageLibraryAsync(galleryOptions);
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
@@ -278,7 +296,11 @@ export default function EditProfileScreen() {
       }
     } catch (err) {
       console.error("Gallery picker error:", err);
-      Alert.alert("Error", "Unable to select photo.");
+      showAlert({
+        title: "Error",
+        message: "Unable to select photo.",
+        type: "error",
+      });
     }
   };
 
@@ -287,12 +309,20 @@ export default function EditProfileScreen() {
   // ─────────────────────────────────────────────────────────────
   const handleUpdateProfile = async () => {
     if (!form.name || form.name.trim() === "") {
-      Alert.alert("Validation Error", "Full Name is required.");
+      showAlert({
+        title: "Validation Error",
+        message: "Full Name is required.",
+        type: "warning",
+      });
       return;
     }
 
     if (!form.phone || form.phone.trim() === "") {
-      Alert.alert("Validation Error", "Phone number is required.");
+      showAlert({
+        title: "Validation Error",
+        message: "Phone number is required.",
+        type: "warning",
+      });
       return;
     }
 
@@ -340,18 +370,26 @@ export default function EditProfileScreen() {
         if (refreshProfile) {
           await refreshProfile();
         }
-        Alert.alert("Success", "Profile updated successfully!", [
-          { text: "OK", onPress: () => navigation.goBack() },
-        ]);
+        showAlert({
+          title: "Profile Updated",
+          message: "Your profile has been saved successfully!",
+          type: "success",
+          buttons: [{ text: "OK", onPress: () => navigation.goBack() }],
+        });
       } else {
-        Alert.alert(
-          "Update Failed",
-          res.message || "Unable to update profile.",
-        );
+        showAlert({
+          title: "Update Failed",
+          message: res.message || "Unable to update profile.",
+          type: "error",
+        });
       }
     } catch (err) {
       console.error("Update profile error:", err);
-      Alert.alert("Error", "An unexpected error occurred while saving.");
+      showAlert({
+        title: "Error",
+        message: "An unexpected error occurred while saving.",
+        type: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -372,12 +410,112 @@ export default function EditProfileScreen() {
   const avatarUri =
     previews.profile_image || profileData?.profile_image || user?.profile_image;
 
-  // Small helper so every TextInput gets consistent focus/blur wiring
-  // without repeating the same two functions 11 times.
   const fieldFocusProps = (key) => ({
     onFocus: () => setFocusedField(key),
     onBlur: () => setFocusedField((prev) => (prev === key ? null : prev)),
   });
+
+  // ─────────────────────────────────────────────────────────────
+  // Reusable document upload block (Aadhaar / PAN)
+  // Header is STACKED (badge on top, buttons row below) so nothing
+  // can overflow the card on small screens.
+  // ─────────────────────────────────────────────────────────────
+  const renderDocField = ({
+    field,
+    label,
+    attachedText,
+    uploadTitle,
+    viewerTitle,
+  }) => {
+    const uri = previews[field];
+    return (
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>{label}</Text>
+        {uri ? (
+          <View style={styles.docFullCard}>
+            <View style={styles.docCardHeader}>
+              <View style={styles.docBadgeAttached}>
+                <Ionicons name="checkmark-circle" size={16} color="#27A462" />
+                <Text style={styles.docBadgeAttachedText} numberOfLines={1}>
+                  {attachedText}
+                </Text>
+              </View>
+
+              <View style={styles.docCardActions}>
+                <TouchableOpacity
+                  style={styles.docActionBtn}
+                  onPress={() => openImagePickerModal(field)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="camera-outline" size={15} color="#E64A78" />
+                  <Text style={styles.docActionBtnText}>Change</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.docActionBtn, styles.docRemoveBtn]}
+                  onPress={() => handleRemoveImage(field)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="trash-outline" size={15} color="#EF4444" />
+                  <Text style={[styles.docActionBtnText, { color: "#EF4444" }]}>
+                    Remove
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={styles.docFullPreviewWrap}
+              activeOpacity={0.9}
+              onPress={() => {
+                setViewingDocUri(uri);
+                setViewingDocTitle(viewerTitle);
+              }}
+            >
+              <Image
+                source={{ uri }}
+                style={styles.docFullImage}
+                resizeMode="contain"
+              />
+              <View style={styles.docTapToZoomHint}>
+                <Ionicons name="scan-outline" size={13} color="#FFFFFF" />
+                <Text style={styles.docTapToZoomText}>
+                  Tap to view full document
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.docUploadCard}
+            onPress={() => openImagePickerModal(field)}
+            activeOpacity={0.75}
+          >
+            <View style={styles.docPlaceholderRow}>
+              <View
+                style={[
+                  styles.docUploadIconBox,
+                  { backgroundColor: "rgba(39,164,98,0.12)" },
+                ]}
+              >
+                <Ionicons
+                  name="cloud-upload-outline"
+                  size={22}
+                  color="#27A462"
+                />
+              </View>
+              <View style={styles.docInfoCol}>
+                <Text style={styles.docPlaceholderTitle}>{uploadTitle}</Text>
+                <Text style={styles.docPlaceholderHint}>
+                  Full document (vertical or horizontal) • No crop
+                </Text>
+              </View>
+              <Ionicons name="add-circle-outline" size={22} color="#27A462" />
+            </View>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   if (loading && !refreshing) {
     return (
@@ -436,7 +574,6 @@ export default function EditProfileScreen() {
           {/* Profile Header Card */}
           <View style={styles.headerCard}>
             <View style={styles.headerRow}>
-              {/* Avatar with gold border */}
               <TouchableOpacity
                 style={styles.avatarBorderWrap}
                 activeOpacity={0.8}
@@ -456,7 +593,6 @@ export default function EditProfileScreen() {
                 </View>
               </TouchableOpacity>
 
-              {/* Center Info */}
               <View style={styles.headerInfo}>
                 <Text style={styles.headerName} numberOfLines={1}>
                   {displayName}
@@ -470,7 +606,6 @@ export default function EditProfileScreen() {
                   </Text>
                 ) : null}
 
-                {/* Referral Code Pill */}
                 <View style={styles.refPill}>
                   <Ionicons name="gift-outline" size={13} color="#C89738" />
                   <Text style={styles.refCodeText}>{displayRef}</Text>
@@ -478,7 +613,6 @@ export default function EditProfileScreen() {
               </View>
             </View>
 
-            {/* Overall Completion Summary */}
             <View style={styles.overallDivider} />
             <View style={styles.overallRow}>
               <Text style={styles.overallLabel}>
@@ -500,46 +634,24 @@ export default function EditProfileScreen() {
               />
             </View>
             <View style={styles.overallStepsRow}>
-              <View style={styles.overallStep}>
-                <Ionicons
-                  name={
-                    personalStats.isComplete
-                      ? "checkmark-circle"
-                      : "ellipse-outline"
-                  }
-                  size={13}
-                  color={personalStats.isComplete ? "#27A462" : "#C5B8BD"}
-                />
-                <Text style={styles.overallStepText}>Personal</Text>
-              </View>
-              <View style={styles.overallStep}>
-                <Ionicons
-                  name={
-                    kycStats.isComplete ? "checkmark-circle" : "ellipse-outline"
-                  }
-                  size={13}
-                  color={kycStats.isComplete ? "#27A462" : "#C5B8BD"}
-                />
-                <Text style={styles.overallStepText}>KYC</Text>
-              </View>
-              <View style={styles.overallStep}>
-                <Ionicons
-                  name={
-                    bankStats.isComplete
-                      ? "checkmark-circle"
-                      : "ellipse-outline"
-                  }
-                  size={13}
-                  color={bankStats.isComplete ? "#27A462" : "#C5B8BD"}
-                />
-                <Text style={styles.overallStepText}>Bank</Text>
-              </View>
+              {[
+                { label: "Personal", done: personalStats.isComplete },
+                { label: "KYC", done: kycStats.isComplete },
+                { label: "Bank", done: bankStats.isComplete },
+              ].map((s) => (
+                <View key={s.label} style={styles.overallStep}>
+                  <Ionicons
+                    name={s.done ? "checkmark-circle" : "ellipse-outline"}
+                    size={13}
+                    color={s.done ? "#27A462" : "#C5B8BD"}
+                  />
+                  <Text style={styles.overallStepText}>{s.label}</Text>
+                </View>
+              ))}
             </View>
           </View>
 
-          {/* ─────────────────────────────────────────────────────────────
-              Section 1: Personal Details (Dropdown Accordion)
-          ───────────────────────────────────────────────────────────── */}
+          {/* ───────────── Section 1: Personal Details ───────────── */}
           <View style={styles.accordionCard}>
             <TouchableOpacity
               style={styles.accordionHeader}
@@ -624,7 +736,7 @@ export default function EditProfileScreen() {
                   </View>
                 </View>
 
-                {/* Email Address */}
+                {/* Email */}
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>Email Address</Text>
                   <View
@@ -652,7 +764,7 @@ export default function EditProfileScreen() {
                   </View>
                 </View>
 
-                {/* Mobile Number */}
+                {/* Mobile */}
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>Mobile Number *</Text>
                   <View
@@ -718,9 +830,7 @@ export default function EditProfileScreen() {
                           <View
                             style={[
                               styles.genderRadioCircle,
-                              isSelected && {
-                                borderColor: item.themeColor,
-                              },
+                              isSelected && { borderColor: item.themeColor },
                             ]}
                           >
                             {isSelected && (
@@ -755,7 +865,7 @@ export default function EditProfileScreen() {
                   </View>
                 </View>
 
-                {/* Residential Address */}
+                {/* Address */}
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>Address</Text>
                   <View
@@ -787,9 +897,7 @@ export default function EditProfileScreen() {
             )}
           </View>
 
-          {/* ─────────────────────────────────────────────────────────────
-              Section 2: KYC Details (Dropdown Accordion)
-          ───────────────────────────────────────────────────────────── */}
+          {/* ───────────── Section 2: KYC Details ───────────── */}
           <View style={styles.accordionCard}>
             <TouchableOpacity
               style={styles.accordionHeader}
@@ -883,65 +991,13 @@ export default function EditProfileScreen() {
                   </View>
                 </View>
 
-                {/* Aadhar Image Upload */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Aadhar Card Document</Text>
-                  <TouchableOpacity
-                    style={styles.docUploadCard}
-                    onPress={() => openImagePickerModal("aadhar_image")}
-                    activeOpacity={0.75}
-                  >
-                    {previews.aadhar_image ? (
-                      <View style={styles.docPreviewRow}>
-                        <Image
-                          source={{ uri: previews.aadhar_image }}
-                          style={styles.docThumb}
-                        />
-                        <View style={styles.docInfoCol}>
-                          <Text style={styles.docStatusText}>
-                            ✓ Aadhar Attached
-                          </Text>
-                          <Text style={styles.docActionLink}>
-                            Tap to change document
-                          </Text>
-                        </View>
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={22}
-                          color="#27A462"
-                        />
-                      </View>
-                    ) : (
-                      <View style={styles.docPlaceholderRow}>
-                        <View
-                          style={[
-                            styles.docUploadIconBox,
-                            { backgroundColor: "rgba(39,164,98,0.12)" },
-                          ]}
-                        >
-                          <Ionicons
-                            name="cloud-upload-outline"
-                            size={22}
-                            color="#27A462"
-                          />
-                        </View>
-                        <View style={styles.docInfoCol}>
-                          <Text style={styles.docPlaceholderTitle}>
-                            Upload Aadhar Card
-                          </Text>
-                          <Text style={styles.docPlaceholderHint}>
-                            JPG, PNG (Max 2MB)
-                          </Text>
-                        </View>
-                        <Ionicons
-                          name="add-circle-outline"
-                          size={22}
-                          color="#27A462"
-                        />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                </View>
+                {renderDocField({
+                  field: "aadhar_image",
+                  label: "Aadhar Card Document",
+                  attachedText: "Aadhaar Attached",
+                  uploadTitle: "Upload Aadhar Card",
+                  viewerTitle: "Aadhaar Card Document",
+                })}
 
                 {/* PAN Number */}
                 <View style={styles.inputGroup}>
@@ -975,72 +1031,18 @@ export default function EditProfileScreen() {
                   </View>
                 </View>
 
-                {/* PAN Image Upload */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>PAN Card Document</Text>
-                  <TouchableOpacity
-                    style={styles.docUploadCard}
-                    onPress={() => openImagePickerModal("pan_image")}
-                    activeOpacity={0.75}
-                  >
-                    {previews.pan_image ? (
-                      <View style={styles.docPreviewRow}>
-                        <Image
-                          source={{ uri: previews.pan_image }}
-                          style={styles.docThumb}
-                        />
-                        <View style={styles.docInfoCol}>
-                          <Text style={styles.docStatusText}>
-                            ✓ PAN Card Attached
-                          </Text>
-                          <Text style={styles.docActionLink}>
-                            Tap to change document
-                          </Text>
-                        </View>
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={22}
-                          color="#27A462"
-                        />
-                      </View>
-                    ) : (
-                      <View style={styles.docPlaceholderRow}>
-                        <View
-                          style={[
-                            styles.docUploadIconBox,
-                            { backgroundColor: "rgba(39,164,98,0.12)" },
-                          ]}
-                        >
-                          <Ionicons
-                            name="cloud-upload-outline"
-                            size={22}
-                            color="#27A462"
-                          />
-                        </View>
-                        <View style={styles.docInfoCol}>
-                          <Text style={styles.docPlaceholderTitle}>
-                            Upload PAN Card
-                          </Text>
-                          <Text style={styles.docPlaceholderHint}>
-                            JPG, PNG (Max 2MB)
-                          </Text>
-                        </View>
-                        <Ionicons
-                          name="add-circle-outline"
-                          size={22}
-                          color="#27A462"
-                        />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                </View>
+                {renderDocField({
+                  field: "pan_image",
+                  label: "PAN Card Document",
+                  attachedText: "PAN Attached",
+                  uploadTitle: "Upload PAN Card",
+                  viewerTitle: "PAN Card Document",
+                })}
               </View>
             )}
           </View>
 
-          {/* ─────────────────────────────────────────────────────────────
-              Section 3: Bank Details (Dropdown Accordion)
-          ───────────────────────────────────────────────────────────── */}
+          {/* ───────────── Section 3: Bank Details ───────────── */}
           <View style={styles.accordionCard}>
             <TouchableOpacity
               style={styles.accordionHeader}
@@ -1192,7 +1194,7 @@ export default function EditProfileScreen() {
                   </View>
                 </View>
 
-                {/* IFSC Code */}
+                {/* IFSC */}
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>IFSC Code</Text>
                   <View
@@ -1223,7 +1225,7 @@ export default function EditProfileScreen() {
                   </View>
                 </View>
 
-                {/* Account Type Dropdown */}
+                {/* Account Type */}
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>Account Type</Text>
                   <TouchableOpacity
@@ -1284,9 +1286,7 @@ export default function EditProfileScreen() {
             )}
           </View>
 
-          {/* ─────────────────────────────────────────────────────────────
-              Update Profile Button (Brand Color: #E64A78)
-          ───────────────────────────────────────────────────────────── */}
+          {/* Update Profile Button */}
           <TouchableOpacity
             style={[styles.updateButton, saving && styles.updateButtonDisabled]}
             onPress={handleUpdateProfile}
@@ -1305,9 +1305,7 @@ export default function EditProfileScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* ─────────────────────────────────────────────────────────────
-          Modal for Photo / Document Selection
-      ───────────────────────────────────────────────────────────── */}
+      {/* Photo / Document Selection Modal */}
       <Modal
         visible={pickerModalVisible}
         transparent
@@ -1391,9 +1389,7 @@ export default function EditProfileScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* ─────────────────────────────────────────────────────────────
-          Modal for Account Type Selection (Dropdown)
-      ───────────────────────────────────────────────────────────── */}
+      {/* Account Type Modal */}
       <Modal
         visible={accountTypeModalVisible}
         transparent
@@ -1488,15 +1484,43 @@ export default function EditProfileScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* Fullscreen Document Viewer */}
+      <Modal
+        visible={Boolean(viewingDocUri)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setViewingDocUri(null)}
+        statusBarTranslucent
+      >
+        <View style={styles.docViewerOverlay}>
+          <SafeAreaView style={styles.docViewerHeader} edges={["top"]}>
+            <Text style={styles.docViewerTitle}>{viewingDocTitle}</Text>
+            <TouchableOpacity
+              style={styles.docViewerCloseBtn}
+              onPress={() => setViewingDocUri(null)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+          </SafeAreaView>
+          <View style={styles.docViewerImageContainer}>
+            {viewingDocUri ? (
+              <Image
+                source={{ uri: viewingDocUri }}
+                style={styles.docViewerImage}
+                resizeMode="contain"
+              />
+            ) : null}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: "#FAF7F8",
-  },
+  safe: { flex: 1, backgroundColor: "#FAF7F8" },
   topHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -1522,11 +1546,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: "#2A1E24",
   },
-  container: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 40,
-  },
+  container: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40 },
   loaderCenter: {
     flex: 1,
     alignItems: "center",
@@ -1553,11 +1573,7 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     elevation: 4,
   },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-  },
+  headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
   avatarBorderWrap: {
     width: 72,
     height: 72,
@@ -1569,11 +1585,7 @@ const styles = StyleSheet.create({
     marginRight: 14,
     position: "relative",
   },
-  avatarImg: {
-    width: "100%",
-    height: "100%",
-    borderRadius: 34,
-  },
+  avatarImg: { width: "100%", height: "100%", borderRadius: 34 },
   avatarPlaceholder: {
     width: "100%",
     height: "100%",
@@ -1600,11 +1612,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#FFFFFF",
   },
-  headerInfo: {
-    flex: 1,
-    justifyContent: "center",
-    minWidth: 0,
-  },
+  headerInfo: { flex: 1, justifyContent: "center", minWidth: 0 },
   headerName: {
     fontFamily: "Poppins_700Bold",
     fontSize: 17,
@@ -1642,12 +1650,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // Overall completion summary (inside header card)
-  overallDivider: {
-    height: 1,
-    backgroundColor: "#F5EFF1",
-    marginBottom: 14,
-  },
+  // Overall completion
+  overallDivider: { height: 1, backgroundColor: "#F5EFF1", marginBottom: 14 },
   overallRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1659,10 +1663,7 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     color: "#8C7A82",
   },
-  overallPercent: {
-    fontFamily: "Poppins_700Bold",
-    fontSize: 13.5,
-  },
+  overallPercent: { fontFamily: "Poppins_700Bold", fontSize: 13.5 },
   overallTrack: {
     height: 8,
     borderRadius: 4,
@@ -1670,26 +1671,16 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: 12,
   },
-  overallFill: {
-    height: "100%",
-    borderRadius: 4,
-  },
-  overallStepsRow: {
-    flexDirection: "row",
-    gap: 16,
-  },
-  overallStep: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
+  overallFill: { height: "100%", borderRadius: 4 },
+  overallStepsRow: { flexDirection: "row", gap: 16 },
+  overallStep: { flexDirection: "row", alignItems: "center", gap: 5 },
   overallStepText: {
     fontFamily: "Poppins_500Medium",
     fontSize: 11.5,
     color: "#6B5A63",
   },
 
-  // Accordion Card
+  // Accordion
   accordionCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 18,
@@ -1717,31 +1708,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 14,
   },
-  headerTextGroup: {
-    flex: 1,
-    minWidth: 0,
-  },
+  headerTextGroup: { flex: 1, minWidth: 0 },
   sectionTitle: {
     fontFamily: "Poppins_600SemiBold",
     fontSize: 15,
     color: "#2A1E24",
     marginBottom: 1,
   },
-  sectionStatus: {
-    fontFamily: "Poppins_500Medium",
-    fontSize: 12,
-  },
-  statusSuccess: {
-    color: "#27A462",
-  },
-  statusPending: {
-    color: "#C89738",
-  },
-  headerRightGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
+  sectionStatus: { fontFamily: "Poppins_500Medium", fontSize: 12 },
+  statusSuccess: { color: "#27A462" },
+  statusPending: { color: "#C89738" },
+  headerRightGroup: { flexDirection: "row", alignItems: "center", gap: 8 },
   countBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -1750,12 +1727,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  badgeSuccess: {
-    backgroundColor: "#27A462",
-  },
-  badgePending: {
-    backgroundColor: "#C89738",
-  },
+  badgeSuccess: { backgroundColor: "#27A462" },
+  badgePending: { backgroundColor: "#C89738" },
   countBadgeText: {
     fontFamily: "Poppins_700Bold",
     fontSize: 12,
@@ -1769,20 +1742,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  accordionBody: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#FAF7F8",
-    marginBottom: 14,
-  },
+  accordionBody: { paddingHorizontal: 16, paddingBottom: 16 },
+  divider: { height: 1, backgroundColor: "#FAF7F8", marginBottom: 14 },
 
-  // Input Fields
-  inputGroup: {
-    marginBottom: 14,
-  },
+  // Inputs
+  inputGroup: { marginBottom: 14 },
   label: {
     fontFamily: "Poppins_500Medium",
     fontSize: 12,
@@ -1799,17 +1763,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     height: 48,
   },
-  inputWrapFocused: {
-    borderColor: "#E64A78",
-    backgroundColor: "#FFFFFF",
-  },
-  multilineInputWrap: {
-    height: 84,
-    alignItems: "flex-start",
-  },
-  inputIcon: {
-    marginRight: 8,
-  },
+  inputWrapFocused: { borderColor: "#E64A78", backgroundColor: "#FFFFFF" },
+  multilineInputWrap: { height: 84, alignItems: "flex-start" },
+  inputIcon: { marginRight: 8 },
   input: {
     flex: 1,
     fontFamily: "Poppins_400Regular",
@@ -1817,17 +1773,10 @@ const styles = StyleSheet.create({
     color: "#2A1E24",
     paddingVertical: 0,
   },
-  multilineInput: {
-    paddingTop: 8,
-    textAlignVertical: "top",
-  },
+  multilineInput: { paddingTop: 8, textAlignVertical: "top" },
 
-  // Gender Selector Styles
-  genderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
+  // Gender
+  genderRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   genderOption: {
     flex: 1,
     flexDirection: "row",
@@ -1840,10 +1789,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 6,
   },
-  genderOptionSelected: {
-    borderColor: "#E64A78",
-    backgroundColor: "rgba(230,74,120,0.06)",
-  },
   genderRadioCircle: {
     width: 15,
     height: 15,
@@ -1854,26 +1799,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 5,
   },
-  genderRadioCircleSelected: {
-    borderColor: "#E64A78",
-  },
-  genderRadioDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: "#E64A78",
-  },
+  genderRadioDot: { width: 7, height: 7, borderRadius: 3.5 },
   genderOptionText: {
     fontFamily: "Poppins_500Medium",
     fontSize: 12.5,
     color: "#6B5E62",
   },
-  genderOptionTextSelected: {
-    fontFamily: "Poppins_600SemiBold",
-    color: "#E64A78",
-  },
 
-  // Document Upload
+  // Document upload (empty state)
   docUploadCard: {
     backgroundColor: "#FAF7F8",
     borderRadius: 12,
@@ -1882,10 +1815,7 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
     padding: 12,
   },
-  docPlaceholderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
+  docPlaceholderRow: { flexDirection: "row", alignItems: "center" },
   docUploadIconBox: {
     width: 38,
     height: 38,
@@ -1894,32 +1824,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 12,
   },
-  docPreviewRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  docThumb: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
-    backgroundColor: "#E5E7EB",
-    marginRight: 12,
-  },
-  docInfoCol: {
-    flex: 1,
-    minWidth: 0,
-  },
-  docStatusText: {
-    fontFamily: "Poppins_600SemiBold",
-    fontSize: 13,
-    color: "#27A462",
-  },
-  docActionLink: {
-    fontFamily: "Poppins_400Regular",
-    fontSize: 11.5,
-    color: "#E64A78",
-    marginTop: 2,
-  },
+  docInfoCol: { flex: 1, minWidth: 0 },
   docPlaceholderTitle: {
     fontFamily: "Poppins_600SemiBold",
     fontSize: 13,
@@ -1932,7 +1837,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 
-  // Account Type Dropdown
+  // Account type dropdown
   dropdownSelector: {
     flexDirection: "row",
     alignItems: "center",
@@ -1944,20 +1849,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     height: 50,
   },
-  dropdownLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
+  dropdownLeft: { flexDirection: "row", alignItems: "center", flex: 1 },
   dropdownValueText: {
     fontFamily: "Poppins_500Medium",
     fontSize: 13.5,
     color: "#2A1E24",
     marginLeft: 10,
   },
-  dropdownPlaceholderText: {
-    color: "#9E8E93",
-  },
+  dropdownPlaceholderText: { color: "#9E8E93" },
   accountTypeOption: {
     flexDirection: "row",
     alignItems: "center",
@@ -1980,20 +1879,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 14,
   },
-  accountTypeIconBoxActive: {
-    backgroundColor: "rgba(230,74,120,0.12)",
-  },
-  accountTypeTextCol: {
-    flex: 1,
-  },
+  accountTypeIconBoxActive: { backgroundColor: "rgba(230,74,120,0.12)" },
+  accountTypeTextCol: { flex: 1 },
   accountTypeOptionTitle: {
     fontFamily: "Poppins_600SemiBold",
     fontSize: 14,
     color: "#2A1E24",
   },
-  accountTypeOptionTitleActive: {
-    color: "#E64A78",
-  },
+  accountTypeOptionTitleActive: { color: "#E64A78" },
   accountTypeOptionDesc: {
     fontFamily: "Poppins_400Regular",
     fontSize: 11.5,
@@ -2001,7 +1894,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Update Button
+  // Update button
   updateButton: {
     backgroundColor: "#E64A78",
     borderRadius: 16,
@@ -2016,14 +1909,8 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     elevation: 8,
   },
-  updateButtonDisabled: {
-    opacity: 0.7,
-  },
-  btnContentRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
+  updateButtonDisabled: { opacity: 0.7 },
+  btnContentRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   updateButtonText: {
     fontFamily: "Poppins_600SemiBold",
     fontSize: 16,
@@ -2031,7 +1918,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  // Modal
+  // Modals
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(42,30,36,0.5)",
@@ -2067,10 +1954,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 16,
   },
-  modalOptions: {
-    gap: 10,
-    marginBottom: 16,
-  },
+  modalOptions: { gap: 10, marginBottom: 16 },
   modalOptionItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -2088,9 +1972,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 14,
   },
-  modalOptionTextCol: {
-    flex: 1,
-  },
+  modalOptionTextCol: { flex: 1 },
   modalOptionTitle: {
     fontFamily: "Poppins_600SemiBold",
     fontSize: 14,
@@ -2114,4 +1996,119 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#9E8E93",
   },
+
+  // ───────── Document card (FIXED: stacked header, no overflow) ─────────
+  docFullCard: {
+    backgroundColor: "#FAF7F8",
+    borderRadius: 16,
+    borderWidth: 1.2,
+    borderColor: "#EBE3E6",
+    padding: 12,
+    overflow: "hidden",
+  },
+  docCardHeader: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 10,
+    marginBottom: 10,
+  },
+  docBadgeAttached: {
+    alignSelf: "flex-start",
+    maxWidth: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(39,164,98,0.12)",
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+  },
+  docBadgeAttachedText: {
+    flexShrink: 1,
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 12,
+    color: "#27A462",
+  },
+  docCardActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  docActionBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#F0EAED",
+  },
+  docRemoveBtn: { borderColor: "#FEE2E2", backgroundColor: "#FEF2F2" },
+  docActionBtnText: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 12,
+    color: "#E64A78",
+  },
+  docFullPreviewWrap: {
+    width: "100%",
+    height: 190,
+    borderRadius: 12,
+    backgroundColor: "#221A1E",
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  docFullImage: { width: "100%", height: "100%" },
+  docTapToZoomHint: {
+    position: "absolute",
+    bottom: 8,
+    right: 8,
+    backgroundColor: "rgba(20, 10, 15, 0.75)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+  },
+  docTapToZoomText: {
+    fontFamily: "Poppins_400Regular",
+    fontSize: 10.5,
+    color: "#FFFFFF",
+  },
+
+  // Fullscreen viewer
+  docViewerOverlay: { flex: 1, backgroundColor: "rgba(10, 5, 8, 0.95)" },
+  docViewerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  docViewerTitle: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 16,
+    color: "#FFFFFF",
+  },
+  docViewerCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  docViewerImageContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  docViewerImage: { width: "100%", height: "100%" },
 });

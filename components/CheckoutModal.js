@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Alert,
   Image,
   Dimensions,
 } from 'react-native';
@@ -18,6 +17,7 @@ import orderService from '../services/orderService';
 import storageService from '../services/storageService';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
+import { showAlert } from '../contexts/AlertContext';
 import ProfileIncompleteModal from './ProfileIncompleteModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -31,6 +31,7 @@ export default function CheckoutModal({
   isBuyNow = false,
   productId = null,
   quantity = 1,
+  size = null,
   onOrderSuccess,
 }) {
   const { user, refreshProfile } = useAuth();
@@ -152,10 +153,11 @@ export default function CheckoutModal({
   const handleConfirmOrder = async () => {
     // 1. Address Validation
     if (!selectedAddressId) {
-      Alert.alert(
-        'Address Required',
-        'Please add or select a delivery address to proceed with your order.',
-        [
+      showAlert({
+        title: 'Address Required',
+        message: 'Please add or select a delivery address to proceed with your order.',
+        type: 'warning',
+        buttons: [
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Add Address',
@@ -164,17 +166,18 @@ export default function CheckoutModal({
               navigation?.navigate('Addresses');
             },
           },
-        ]
-      );
+        ],
+      });
       return;
     }
 
     // 2. Wallet Balance Validation
     if (!hasSufficientBalance) {
-      Alert.alert(
-        'Insufficient Wallet Balance',
-        `Your wallet balance (₹${walletBalance.toLocaleString('en-IN')}) is insufficient for this order (₹${numericTotal.toLocaleString('en-IN')}).\n\nPlease add ₹${shortfall.toLocaleString('en-IN')} to your wallet.`,
-        [
+      showAlert({
+        title: 'Insufficient Wallet Balance',
+        message: `Your wallet balance (₹${walletBalance.toLocaleString('en-IN')}) is insufficient for this order (₹${numericTotal.toLocaleString('en-IN')}).\n\nPlease add ₹${shortfall.toLocaleString('en-IN')} to your wallet.`,
+        type: 'warning',
+        buttons: [
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Add Money',
@@ -183,8 +186,8 @@ export default function CheckoutModal({
               navigation?.navigate('Wallet');
             },
           },
-        ]
-      );
+        ],
+      });
       return;
     }
 
@@ -202,6 +205,9 @@ export default function CheckoutModal({
       if (isBuyNow && productId) {
         placePayload.product_id = productId;
         placePayload.quantity = quantity;
+        if (size) {
+          placePayload.size = size;
+        }
       }
 
       const placeRes = await orderService.placeOrder(placePayload);
@@ -217,7 +223,11 @@ export default function CheckoutModal({
           setProfileModalMessage(placeRes.message || '');
           setProfileModalVisible(true);
         } else {
-          Alert.alert('Order Placement Failed', placeRes.message || 'Could not place your order.');
+          showAlert({
+            title: 'Order Placement Failed',
+            message: placeRes.message || 'Could not place your order.',
+            type: 'error',
+          });
         }
         setProcessing(false);
         return;
@@ -295,7 +305,11 @@ export default function CheckoutModal({
       if (onOrderSuccess) onOrderSuccess(verifiedResults);
     } catch (err) {
       console.error('Checkout error:', err);
-      Alert.alert('Error', err.message || 'An unexpected error occurred during checkout.');
+      showAlert({
+        title: 'Error',
+        message: err.message || 'An unexpected error occurred during checkout.',
+        type: 'error',
+      });
     } finally {
       setProcessing(false);
     }
@@ -572,9 +586,17 @@ export default function CheckoutModal({
                         <Text style={styles.itemName} numberOfLines={1}>
                           {it.name || it.product_name}
                         </Text>
-                        <Text style={styles.itemQtyPrice}>
-                          ₹{itemPrice.toLocaleString('en-IN')} × {itemQty}
-                        </Text>
+                        <View style={styles.itemMetaRow}>
+                          <Text style={styles.itemQtyPrice}>
+                            ₹{itemPrice.toLocaleString('en-IN')} × {itemQty}
+                          </Text>
+                          {it.size ? (
+                            <View style={styles.itemSizeBadge}>
+                              <Ionicons name="shirt-outline" size={10} color="#E64A78" />
+                              <Text style={styles.itemSizeBadgeText}>Size: {it.size}</Text>
+                            </View>
+                          ) : null}
+                        </View>
                       </View>
                       <Text style={styles.itemTotal}>
                         ₹{itemLineTotal.toLocaleString('en-IN')}
@@ -669,7 +691,7 @@ export default function CheckoutModal({
                 </View>
                 <View style={styles.billRow}>
                   <Text style={styles.billLabel}>Shipping & Delivery</Text>
-                  <Text style={[styles.billVal, { color: '#27A462' }]}>FREE</Text>
+                  <Text style={[styles.billVal, { color: '#E64A78', fontWeight: '600' }]}>As per order</Text>
                 </View>
                 <View style={styles.billDivider} />
                 <View style={styles.billRow}>
@@ -1356,5 +1378,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#8C7A82',
     fontWeight: '500',
+  },
+  itemMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  itemSizeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#FFF0F5',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#FBD5E1',
+  },
+  itemSizeBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: '#E64A78',
   },
 });

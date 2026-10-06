@@ -8,10 +8,10 @@ import {
   Image,
   ActivityIndicator,
   RefreshControl,
-  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import Alert from "../services/alertService";
 import orderService from "../services/orderService";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -233,13 +233,20 @@ export default function OrderDetailsScreen({ route, navigation }) {
   const formatDate = (dateStr) => {
     if (!dateStr) return "";
     try {
-      const d = new Date(dateStr.replace(" ", "T"));
+      let s = String(dateStr).trim().replace(" ", "T");
+      if (!s.includes("+") && !s.includes("Z") && !s.includes("-", 10)) {
+        s += "+05:30";
+      }
+      const d = new Date(s);
+      if (isNaN(d.getTime())) return dateStr;
       return d.toLocaleDateString("en-IN", {
         day: "numeric",
         month: "short",
         year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
+        hour12: true,
+        timeZone: "Asia/Kolkata",
       });
     } catch {
       return dateStr;
@@ -439,59 +446,142 @@ export default function OrderDetailsScreen({ route, navigation }) {
 
         {/* Product Details Card */}
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionHeader}>Item Details</Text>
-          <TouchableOpacity
-            style={styles.productRow}
-            activeOpacity={order.product_id ? 0.7 : 1}
-            onPress={order.product_id ? handleViewProduct : undefined}
-            disabled={!order.product_id}
-          >
-            <View style={styles.productImgBox}>
-              {order.product_image ? (
-                <Image
-                  source={{ uri: order.product_image }}
-                  style={styles.productImg}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={styles.fallbackBox}>
-                  <Ionicons name="cube-outline" size={28} color="#C4B8BC" />
-                </View>
-              )}
-            </View>
+          <Text style={styles.sectionHeader}>
+            Item Details{order.items && order.items.length > 0 ? ` (${order.items.length})` : ""}
+          </Text>
 
-            <View style={styles.productDetailsCol}>
-              <Text style={styles.productName} numberOfLines={2}>
-                {order.product_name}
-              </Text>
-              {order.category_name && (
-                <View style={styles.categoryBadge}>
-                  <Text style={styles.categoryBadgeText}>
-                    {order.category_name}
-                  </Text>
-                </View>
-              )}
-              <View style={styles.productPriceRow}>
-                <Text style={styles.priceEach}>
-                  ₹{Number(order.product_price || 0).toLocaleString("en-IN")} ×{" "}
-                  {order.quantity}
-                </Text>
-                <Text style={styles.priceSubtotal}>
-                  ₹{Number(order.amount || 0).toLocaleString("en-IN")}
-                </Text>
+          {Array.isArray(order.items) && order.items.length > 0 ? (
+            order.items.map((item, idx) => (
+              <View key={item.id || idx}>
+                {idx > 0 && <View style={[styles.divider, { marginVertical: 12 }]} />}
+                <TouchableOpacity
+                  style={styles.productRow}
+                  activeOpacity={item.product_id ? 0.7 : 1}
+                  onPress={() => {
+                    if (item.product_id) {
+                      navigation.navigate("ProductDetails", { productId: item.product_id });
+                    }
+                  }}
+                  disabled={!item.product_id}
+                >
+                  <View style={styles.productImgBox}>
+                    {item.product_image ? (
+                      <Image
+                        source={{ uri: item.product_image }}
+                        style={styles.productImg}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={styles.fallbackBox}>
+                        <Ionicons name="cube-outline" size={28} color="#C4B8BC" />
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={styles.productDetailsCol}>
+                    <Text style={styles.productName} numberOfLines={2}>
+                      {item.product_name}
+                    </Text>
+                    {item.category_name && (
+                      <View style={styles.categoryBadge}>
+                        <Text style={styles.categoryBadgeText}>
+                          {item.category_name}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.productPriceRow}>
+                      <Text style={styles.priceEach}>
+                        ₹{Number(item.price || 0).toLocaleString("en-IN")} × {item.quantity}
+                      </Text>
+                      {item.size ? (
+                        <View style={styles.sizePill}>
+                          <Ionicons name="shirt-outline" size={11} color="#E64A78" />
+                          <Text style={styles.sizePillText}>Size: {item.size}</Text>
+                        </View>
+                      ) : null}
+                      <Text style={styles.priceSubtotal}>
+                        ₹{Number(item.subtotal || 0).toLocaleString("en-IN")}
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+
+                {item.product_id ? (
+                  <TouchableOpacity
+                    style={styles.viewProductBtn}
+                    activeOpacity={0.7}
+                    onPress={() =>
+                      navigation.navigate("ProductDetails", { productId: item.product_id })
+                    }
+                  >
+                    <Text style={styles.viewProductText}>View Product</Text>
+                    <Ionicons name="arrow-forward" size={15} color="#E64A78" />
+                  </TouchableOpacity>
+                ) : null}
               </View>
-            </View>
-          </TouchableOpacity>
+            ))
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.productRow}
+                activeOpacity={order.product_id ? 0.7 : 1}
+                onPress={order.product_id ? handleViewProduct : undefined}
+                disabled={!order.product_id}
+              >
+                <View style={styles.productImgBox}>
+                  {order.product_image ? (
+                    <Image
+                      source={{ uri: order.product_image }}
+                      style={styles.productImg}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.fallbackBox}>
+                      <Ionicons name="cube-outline" size={28} color="#C4B8BC" />
+                    </View>
+                  )}
+                </View>
 
-          {order.product_id && (
-            <TouchableOpacity
-              style={styles.viewProductBtn}
-              activeOpacity={0.7}
-              onPress={handleViewProduct}
-            >
-              <Text style={styles.viewProductText}>View Product</Text>
-              <Ionicons name="arrow-forward" size={15} color="#E64A78" />
-            </TouchableOpacity>
+                <View style={styles.productDetailsCol}>
+                  <Text style={styles.productName} numberOfLines={2}>
+                    {order.product_name}
+                  </Text>
+                  {order.category_name && (
+                    <View style={styles.categoryBadge}>
+                      <Text style={styles.categoryBadgeText}>
+                        {order.category_name}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.productPriceRow}>
+                    <Text style={styles.priceEach}>
+                      ₹{Number(order.product_price || 0).toLocaleString("en-IN")} ×{" "}
+                      {order.quantity}
+                    </Text>
+                    {order.size ? (
+                      <View style={styles.sizePill}>
+                        <Ionicons name="shirt-outline" size={11} color="#E64A78" />
+                        <Text style={styles.sizePillText}>Size: {order.size}</Text>
+                      </View>
+                    ) : null}
+                    <Text style={styles.priceSubtotal}>
+                      ₹{Number(order.amount || 0).toLocaleString("en-IN")}
+                    </Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+
+              {order.product_id && (
+                <TouchableOpacity
+                  style={styles.viewProductBtn}
+                  activeOpacity={0.7}
+                  onPress={handleViewProduct}
+                >
+                  <Text style={styles.viewProductText}>View Product</Text>
+                  <Ionicons name="arrow-forward" size={15} color="#E64A78" />
+                </TouchableOpacity>
+              )}
+            </>
           )}
         </View>
 
@@ -544,8 +634,8 @@ export default function OrderDetailsScreen({ route, navigation }) {
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Delivery Charge</Text>
-            <Text style={[styles.summaryValue, { color: "#27A462" }]}>
-              FREE
+            <Text style={[styles.summaryValue, { color: "#E64A78", fontWeight: "600" }]}>
+              {order?.delivery_charge > 0 ? `₹${Number(order.delivery_charge).toLocaleString("en-IN")}` : "As per order"}
             </Text>
           </View>
           <View style={styles.summaryDivider} />
@@ -1067,6 +1157,22 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins_400Regular",
     fontSize: 13,
     color: "#8C7A82",
+  },
+  sizePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "#FFF0F5",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#FBD5E1",
+  },
+  sizePillText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 11,
+    color: "#E64A78",
   },
   priceSubtotal: {
     fontFamily: "Poppins_700Bold",

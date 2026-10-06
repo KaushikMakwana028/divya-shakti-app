@@ -8,7 +8,6 @@ import {
   Image,
   ActivityIndicator,
   Modal,
-  Alert,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,6 +18,7 @@ import orderService from '../services/orderService';
 import walletService from '../services/walletService';
 import storageService from '../services/storageService';
 import { useCart } from '../contexts/CartContext';
+import { showAlert } from '../contexts/AlertContext';
 import { useAuth } from '../contexts/AuthContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -28,9 +28,12 @@ export default function CheckoutReviewScreen({ route, navigation }) {
     isBuyNow = false,
     productId = null,
     quantity = 1,
+    selectedSize = null,
+    size = null,
     pendingOrderId = null,
     pendingOrderIds = null,
   } = route?.params || {};
+  const chosenSize = selectedSize || size || null;
 
   const { fetchCart } = useCart();
   const { user, refreshProfile } = useAuth();
@@ -97,6 +100,7 @@ export default function CheckoutReviewScreen({ route, navigation }) {
                 product_image: ord.product_image,
                 unit_price: ord.product_price || ord.amount / (ord.quantity || 1),
                 quantity: ord.quantity,
+                size: ord.size || null,
                 line_total: ord.amount,
               },
             ]);
@@ -142,6 +146,9 @@ export default function CheckoutReviewScreen({ route, navigation }) {
         if (isBuyNow && productId) {
           payload.product_id = productId;
           payload.quantity = quantity || 1;
+          if (chosenSize) {
+            payload.size = chosenSize;
+          }
         }
         if (overrideAddressId !== null && overrideAddressId !== undefined) {
           payload.address_id = overrideAddressId;
@@ -231,15 +238,20 @@ export default function CheckoutReviewScreen({ route, navigation }) {
     }
 
     if (!selectedAddress?.id) {
-      Alert.alert('Address Required', 'Please select or add a delivery address to proceed with your order.');
+      showAlert({
+        title: 'Address Required',
+        message: 'Please select or add a delivery address to proceed with your order.',
+        type: 'warning',
+      });
       return;
     }
 
     if (!walletInfo?.is_wallet_sufficient) {
-      Alert.alert(
-        'Insufficient Balance',
-        walletInfo?.message || 'Your wallet does not have enough balance to complete this purchase.'
-      );
+      showAlert({
+        title: 'Insufficient Balance',
+        message: walletInfo?.message || 'Your wallet does not have enough balance to complete this purchase.',
+        type: 'warning',
+      });
       return;
     }
 
@@ -270,7 +282,11 @@ export default function CheckoutReviewScreen({ route, navigation }) {
           });
           return;
         } else {
-          Alert.alert('Payment Failed', res.message || 'Payment verification failed.');
+          showAlert({
+            title: 'Payment Failed',
+            message: res.message || 'Payment verification failed.',
+            type: 'error',
+          });
           return;
         }
       }
@@ -285,6 +301,9 @@ export default function CheckoutReviewScreen({ route, navigation }) {
       if (isBuyNow && productId) {
         placePayload.product_id = productId;
         placePayload.quantity = quantity || 1;
+        if (chosenSize) {
+          placePayload.size = chosenSize;
+        }
       }
 
       const placeRes = await orderService.placeOrder(placePayload);
@@ -309,11 +328,19 @@ export default function CheckoutReviewScreen({ route, navigation }) {
         });
       } else {
         const failMessage = placeRes.message || 'Order placement failed.';
-        Alert.alert('Order Placement Failed', failMessage);
+        showAlert({
+          title: 'Order Placement Failed',
+          message: failMessage,
+          type: 'error',
+        });
       }
     } catch (err) {
       console.warn('Payment verification error notice:', err.message);
-      Alert.alert('Error', err.message || 'Payment could not be verified.');
+      showAlert({
+        title: 'Error',
+        message: err.message || 'Payment could not be verified.',
+        type: 'error',
+      });
     } finally {
       isPayingRef.current = false;
       setIsProcessingPayment(false);
@@ -487,11 +514,31 @@ export default function CheckoutReviewScreen({ route, navigation }) {
           ) : (
             <TouchableOpacity
               style={styles.noAddressBox}
-              onPress={() => navigation.navigate('Addresses')}
+              onPress={() => {
+                if (shippingAddresses && shippingAddresses.length > 0) {
+                  setAddressModalVisible(true);
+                } else {
+                  navigation.navigate('Addresses');
+                }
+              }}
               activeOpacity={0.8}
             >
-              <Ionicons name="add-circle" size={24} color="#E64A78" />
-              <Text style={styles.noAddressText}>No shipping address found. Tap to add.</Text>
+              <View style={styles.noAddressIconBox}>
+                <Ionicons name="add-circle" size={24} color="#E64A78" />
+              </View>
+              <View style={styles.noAddressTextBox}>
+                <Text style={styles.noAddressTitle}>
+                  {shippingAddresses && shippingAddresses.length > 0
+                    ? 'No shipping address selected'
+                    : 'No shipping address found'}
+                </Text>
+                <Text style={styles.noAddressSub}>
+                  {shippingAddresses && shippingAddresses.length > 0
+                    ? 'Tap to select or add address'
+                    : 'Tap to add delivery address'}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#E64A78" />
             </TouchableOpacity>
           )}
         </View>
@@ -527,6 +574,12 @@ export default function CheckoutReviewScreen({ route, navigation }) {
                 </Text>
                 <View style={styles.itemMetaRow}>
                   <Text style={styles.itemQty}>Qty: {item.quantity}</Text>
+                  {item.size ? (
+                    <View style={styles.itemSizeBadge}>
+                      <Ionicons name="shirt-outline" size={10} color="#E64A78" />
+                      <Text style={styles.itemSizeBadgeText}>Size: {item.size}</Text>
+                    </View>
+                  ) : null}
                   <Text style={styles.itemUnitPrice}>
                     ₹{Number(item.unit_price || 0).toLocaleString('en-IN')} each
                   </Text>
@@ -563,8 +616,8 @@ export default function CheckoutReviewScreen({ route, navigation }) {
 
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Delivery Charges</Text>
-              <Text style={[styles.summaryValue, { color: '#16A34A', fontWeight: '600' }]}>
-                {orderSummary.delivery_charge > 0 ? `₹${orderSummary.delivery_charge}` : 'FREE'}
+              <Text style={[styles.summaryValue, { color: '#E64A78', fontWeight: '600' }]}>
+                {orderSummary.delivery_charge > 0 ? `₹${orderSummary.delivery_charge}` : 'As per order'}
               </Text>
             </View>
 
@@ -864,15 +917,38 @@ const styles = StyleSheet.create({
   noAddressBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    padding: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     borderRadius: 10,
     backgroundColor: '#FFF1F4',
     borderWidth: 1,
     borderColor: '#FCD8E1',
   },
+  noAddressIconBox: {
+    marginRight: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  noAddressTextBox: {
+    flex: 1,
+    justifyContent: 'center',
+    marginRight: 6,
+  },
+  noAddressTitle: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#E64A78',
+    marginBottom: 2,
+  },
+  noAddressSub: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#9E3C62',
+    lineHeight: 16,
+  },
   noAddressText: {
-    fontSize: 14,
+    flex: 1,
+    fontSize: 13,
     fontWeight: '600',
     color: '#E64A78',
   },
@@ -1241,6 +1317,22 @@ const styles = StyleSheet.create({
   modalAddBtnText: {
     fontSize: 14,
     fontWeight: '700',
+    color: '#E64A78',
+  },
+  itemSizeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#FFF0F5',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FBD5E1',
+  },
+  itemSizeBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
     color: '#E64A78',
   },
 });

@@ -6,10 +6,10 @@ import {
   StyleSheet,
   TouchableOpacity,
   Linking,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Alert from '../services/alertService';
 import Header from '../components/Header';
 
 // Support channels metadata

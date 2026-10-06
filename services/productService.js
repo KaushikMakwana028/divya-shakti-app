@@ -116,9 +116,13 @@ class ProductService {
     // ─────────────────────────────────────────
     // Get Product Detail
     // ─────────────────────────────────────────
-    async getProductDetail(id) {
+    async getProductDetail(id, quantity = 1) {
         try {
-            const response = await this.api.get('/get_product_detail', { params: { id } });
+            const params = { id };
+            if (quantity && Number(quantity) > 0) {
+                params.quantity = Number(quantity);
+            }
+            const response = await this.api.get('/get_product_detail', { params });
             if (response.data && response.data.status) {
                 return {
                     success: true,

@@ -12,6 +12,7 @@ const normalizeCartItem = (item) => ({
   product_name: item.product_name || item.name || 'Product',
   price: item.price,
   quantity: Number(item.quantity) || 1,
+  size: item.size || null,
   image: item.image || item.product_image || null,
   product_stock: item.product_stock !== undefined ? item.product_stock : (item.stock || 100),
   total_price: item.total_price !== undefined ? item.total_price : (Number(item.price) * (Number(item.quantity) || 1)),
@@ -54,10 +55,11 @@ export function CartProvider({ children }) {
   // ─────────────────────────────────────────
   // Add To Cart
   // ─────────────────────────────────────────
-  const addToCart = async (product, quantity = 1) => {
+  const addToCart = async (product, quantity = 1, size = null) => {
     const productId = product.product_id || product.id;
+    const itemSize = size || product.size || null;
     try {
-      const res = await cartService.addToCart(productId, quantity);
+      const res = await cartService.addToCart(productId, quantity, itemSize);
       if (res.success) {
         await fetchCart();
         return { success: true, message: res.message, data: res.data };

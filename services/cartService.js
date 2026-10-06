@@ -48,7 +48,7 @@ class CartService {
     // Add To Cart
     // POST /api/add_to_cart
     // ─────────────────────────────────────────
-    async addToCart(productId, quantity = 1) {
+    async addToCart(productId, quantity = 1, size = null) {
         try {
             const token = await storageService.getToken();
             if (!token) {
@@ -59,10 +59,15 @@ class CartService {
                 };
             }
 
-            const response = await this.api.post('/add_to_cart', {
+            const payload = {
                 product_id: Number(productId),
                 quantity: Number(quantity),
-            });
+            };
+            if (size) {
+                payload.size = size;
+            }
+
+            const response = await this.api.post('/add_to_cart', payload);
 
             if (response.data && response.data.status) {
                 return {

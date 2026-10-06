@@ -5,7 +5,6 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   Image,
   RefreshControl,
   ActivityIndicator,
@@ -18,6 +17,7 @@ import ProfileIncompleteModal from '../components/ProfileIncompleteModal';
 import CheckoutModal from '../components/CheckoutModal';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
+import { showAlert } from '../contexts/AlertContext';
 
 export default function CartScreen({ navigation }) {
   const {
@@ -65,7 +65,11 @@ export default function CartScreen({ navigation }) {
 
   const handleCheckout = async () => {
     if (cartItems.length === 0) {
-      Alert.alert('Cart Empty', 'Please add items to your cart first.');
+      showAlert({
+        title: 'Cart Empty',
+        message: 'Please add items to your cart first.',
+        type: 'warning',
+      });
       return;
     }
 
@@ -124,7 +128,11 @@ export default function CartScreen({ navigation }) {
     try {
       const res = await updateQuantity(productId, newQty);
       if (!res.success && res.message) {
-        Alert.alert('Notice', res.message);
+        showAlert({
+          title: 'Notice',
+          message: res.message,
+          type: 'info',
+        });
       }
     } finally {
       setUpdatingId(null);
@@ -133,10 +141,11 @@ export default function CartScreen({ navigation }) {
 
   const handleRemoveItem = (item) => {
     const prodId = item.product_id || item.id;
-    Alert.alert(
-      'Remove Item',
-      `Remove ${item.name || item.product_name} from your cart?`,
-      [
+    showAlert({
+      title: 'Remove Item',
+      message: `Remove ${item.name || item.product_name} from your cart?`,
+      type: 'confirm',
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove',
@@ -150,8 +159,8 @@ export default function CartScreen({ navigation }) {
             }
           },
         },
-      ]
-    );
+      ],
+    });
   };
 
   if (loading && cartItems.length === 0) {
@@ -266,6 +275,12 @@ export default function CartScreen({ navigation }) {
                   {item.name || item.product_name}
                 </Text>
                 <Text style={styles.itemPrice}>{formattedPrice}</Text>
+                {item.size ? (
+                  <View style={styles.sizeBadge}>
+                    <Ionicons name="shirt-outline" size={11} color="#E64A78" />
+                    <Text style={styles.sizeBadgeText}>Size: {item.size}</Text>
+                  </View>
+                ) : null}
                 {item.product_stock !== undefined && (
                   <Text style={styles.stockHint}>
                     {item.product_stock > 0 ? `${item.product_stock} in stock` : 'Out of stock'}
@@ -323,7 +338,7 @@ export default function CartScreen({ navigation }) {
 
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Delivery Charges</Text>
-            <Text style={[styles.summaryValue, { color: '#27A462' }]}>FREE</Text>
+            <Text style={[styles.summaryValue, { color: '#E64A78', fontWeight: '600' }]}>As per order</Text>
           </View>
 
           <View style={styles.summaryDivider} />
@@ -690,5 +705,24 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_600SemiBold',
     fontSize: 13.5,
     color: '#FFFFFF',
+  },
+  sizeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFF0F5',
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FBD5E1',
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  sizeBadgeText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 11,
+    color: '#E64A78',
   },
 });

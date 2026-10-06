@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   TextInput,
   RefreshControl,
-  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,6 +18,7 @@ import Header from "../components/Header";
 import ProfileIncompleteModal from "../components/ProfileIncompleteModal";
 import { useCart } from "../contexts/CartContext";
 import { useAuth } from "../contexts/AuthContext";
+import { showAlert } from "../contexts/AlertContext";
 import productService from "../services/productService";
 
 const { width } = Dimensions.get("window");
@@ -138,7 +138,11 @@ export default function ShopScreen({ navigation }) {
   const handleQuickAdd = async (product, e) => {
     e.stopPropagation();
     if (product.stock !== undefined && product.stock <= 0) {
-      Alert.alert("Out of Stock", "This product is currently unavailable.");
+      showAlert({
+        title: "Out of Stock",
+        message: "This product is currently unavailable.",
+        type: "warning",
+      });
       return;
     }
 
@@ -190,14 +194,15 @@ export default function ShopScreen({ navigation }) {
     try {
       const res = await addToCart(product, 1);
       if (res.success) {
-        Alert.alert(
-          "Added to Cart",
-          `${product.name} has been added to your cart!`,
-          [
+        showAlert({
+          title: "Added to Cart",
+          message: `${product.name} has been added to your cart!`,
+          type: "cart",
+          buttons: [
             { text: "Continue Shopping", style: "cancel" },
             { text: "View Cart", onPress: () => navigation.navigate("Cart") },
           ],
-        );
+        });
       } else if (res.isUnderReview || res.isProfileIncomplete) {
         const pct =
           res.profileData?.profile_completion_percentage ??
@@ -211,10 +216,11 @@ export default function ShopScreen({ navigation }) {
         setProfileModalMessage(res.message || "");
         setProfileModalVisible(true);
       } else {
-        Alert.alert(
-          "Cannot Add to Cart",
-          res.message || "Failed to add item to cart.",
-        );
+        showAlert({
+          title: "Cannot Add to Cart",
+          message: res.message || "Failed to add item to cart.",
+          type: "error",
+        });
       }
     } finally {
       setAddingProductId(null);

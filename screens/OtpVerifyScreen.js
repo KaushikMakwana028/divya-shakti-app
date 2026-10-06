@@ -9,12 +9,12 @@ import {
   Platform,
   ActivityIndicator,
   Image,
-  Alert,
   Keyboard,
   ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import Alert from "../services/alertService";
 import authService from "../services/authService";
 import { useAuth } from "../contexts/AuthContext";
 

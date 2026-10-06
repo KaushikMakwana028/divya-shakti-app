@@ -164,13 +164,20 @@ export default function OrdersScreen({ navigation }) {
   const formatDate = (dateStr) => {
     if (!dateStr) return "";
     try {
-      const d = new Date(dateStr.replace(" ", "T"));
+      let s = String(dateStr).trim().replace(" ", "T");
+      if (!s.includes("+") && !s.includes("Z") && !s.includes("-", 10)) {
+        s += "+05:30";
+      }
+      const d = new Date(s);
+      if (isNaN(d.getTime())) return dateStr;
       return d.toLocaleDateString("en-IN", {
         day: "numeric",
         month: "short",
         year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
+        hour12: true,
+        timeZone: "Asia/Kolkata",
       });
     } catch {
       return dateStr;
@@ -180,6 +187,8 @@ export default function OrdersScreen({ navigation }) {
   const renderOrderItem = ({ item }) => {
     const statusCfg = getStatusConfig(item.status);
     const isPending = item.status?.toLowerCase() === "pending";
+    const hasMultipleItems = item.items_count > 1 || (item.items && item.items.length > 1);
+    const totalItemsCount = item.items_count || (item.items ? item.items.length : 1);
 
     return (
       <View style={styles.orderCard}>
@@ -231,10 +240,26 @@ export default function OrdersScreen({ navigation }) {
               <Text style={styles.productName} numberOfLines={2}>
                 {item.product_name}
               </Text>
+              {hasMultipleItems && (
+                <View style={styles.multiItemsBadge}>
+                  <Ionicons name="layers-outline" size={11} color="#E64A78" />
+                  <Text style={styles.multiItemsBadgeText}>
+                    +{totalItemsCount - 1} more item{totalItemsCount - 1 > 1 ? "s" : ""}
+                  </Text>
+                </View>
+              )}
               <View style={styles.qtyRow}>
                 <View style={styles.qtyBadge}>
-                  <Text style={styles.qtyBadgeText}>Qty: {item.quantity}</Text>
+                  <Text style={styles.qtyBadgeText}>
+                    Qty: {item.quantity}{hasMultipleItems ? ` (${totalItemsCount} items)` : ""}
+                  </Text>
                 </View>
+                {item.size ? (
+                  <View style={styles.sizeBadge}>
+                    <Ionicons name="shirt-outline" size={10} color="#E64A78" />
+                    <Text style={styles.sizeBadgeText}>Size: {item.size}</Text>
+                  </View>
+                ) : null}
                 <Text style={styles.amountText}>
                   ₹{Number(item.amount || 0).toLocaleString("en-IN")}
                 </Text>
@@ -510,7 +535,25 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#2A1E24",
     lineHeight: 18,
+    marginBottom: 4,
+  },
+  multiItemsBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 4,
+    backgroundColor: "#FDF2F4",
+    borderWidth: 1,
+    borderColor: "#FBCFE8",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 12,
     marginBottom: 6,
+  },
+  multiItemsBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#E64A78",
   },
   qtyRow: {
     flexDirection: "row",
@@ -527,6 +570,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#7A6E74",
     fontWeight: "600",
+  },
+  sizeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "#FFF0F5",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#FBD5E1",
+  },
+  sizeBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#E64A78",
   },
   amountText: {
     fontSize: 15,
