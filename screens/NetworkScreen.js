@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Header from '../components/Header';
 import NetworkTreeGraph from '../components/NetworkTreeGraph';
@@ -50,6 +51,8 @@ export default function NetworkScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [treeData, setTreeData] = useState([]);
   const [referrals, setReferrals] = useState([]);
+  const [isFocused, setIsFocused] = useState(true);
+  const hasLoadedOnce = useRef(false);
   const [summary, setSummary] = useState({
     total: 0,
     active: 0,
@@ -61,13 +64,14 @@ export default function NetworkScreen({ navigation }) {
   const fetchNetwork = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true);
-    } else {
+    } else if (!hasLoadedOnce.current) {
       setLoading(true);
     }
 
     try {
       const res = await networkService.getReferrals('my');
       if (res && res.success) {
+        hasLoadedOnce.current = true;
         const liveTree = Array.isArray(res.tree) ? res.tree : [];
         const liveReferrals = Array.isArray(res.referrals) ? res.referrals : [];
 
@@ -75,24 +79,28 @@ export default function NetworkScreen({ navigation }) {
         setReferrals(liveReferrals);
 
         const flattened = flattenTreeNodes(liveTree);
-        const downlines = flattened.filter((m) => m.level > 1);
+        const downlines = flattened.filter((m) => (m.level !== undefined ? m.level > 0 : m.id !== liveTree[0]?.id));
         const downlineTotal = res.summary?.total_referrals ?? (liveReferrals.length > 0 ? liveReferrals.length : downlines.length);
         const downlineActive = res.summary?.active_referrals ?? downlines.filter((m) => m.is_active || m.status === 'Active').length;
-        const downlineLevels = res.summary?.levels ?? (downlines.length > 0 ? Math.max(...downlines.map((m) => m.level - 1)) : 1);
+        const downlineLevels = res.summary?.levels ?? (downlines.length > 0 ? Math.max(...downlines.map((m) => m.level)) : 1);
 
         setSummary({
           total: downlineTotal,
           active: downlineActive,
-          levels: downlineLevels,
+          levels: Math.max(downlineLevels, 1),
         });
       } else {
-        setTreeData([]);
-        setReferrals([]);
+        if (!hasLoadedOnce.current) {
+          setTreeData([]);
+          setReferrals([]);
+        }
       }
     } catch (err) {
       console.error('Failed to load real-time downline data:', err);
-      setTreeData([]);
-      setReferrals([]);
+      if (!hasLoadedOnce.current) {
+        setTreeData([]);
+        setReferrals([]);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -103,6 +111,16 @@ export default function NetworkScreen({ navigation }) {
     fetchNetwork();
   }, [fetchNetwork]);
 
+  useFocusEffect(
+    useCallback(() => {
+      setIsFocused(true);
+      fetchNetwork(false);
+      return () => {
+        setIsFocused(false);
+      };
+    }, [fetchNetwork])
+  );
+
   // Downline members only for the List View
   const allMembers = useMemo(() => {
     if (referrals && referrals.length > 0) {
@@ -110,7 +128,7 @@ export default function NetworkScreen({ navigation }) {
     }
     const flat = flattenTreeNodes(treeData);
     // Exclude the root user itself from the downlines list
-    return flat.filter((m) => m.level > 1);
+    return flat.filter((m) => (m.level !== undefined ? m.level > 0 : m.id !== treeData[0]?.id));
   }, [treeData, referrals]);
 
   // Filtered members for List View
@@ -269,6 +287,7 @@ export default function NetworkScreen({ navigation }) {
             <NetworkTreeGraph
               data={treeData}
               searchQuery={search}
+              isFocused={isFocused}
               onSelectMember={(member) => setSelectedMember(member)}
             />
           )}

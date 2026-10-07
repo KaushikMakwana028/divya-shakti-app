@@ -89,25 +89,21 @@ export default function CartScreen({ navigation }) {
     }
 
     // Check profile completion (100% required & active required)
-    const isProfileComplete =
-      currentUser?.is_profile_completed === true ||
-      Number(currentUser?.profile_completion_percentage) >= 100;
+    const actualPct = Number(currentUser?.profile_completion_percentage ?? 0);
+    const missingList = Array.isArray(currentUser?.missing_fields) ? currentUser.missing_fields : [];
+    const hasMissing = missingList.length > 0;
+    const isProfileComplete = (currentUser?.is_profile_completed === true || actualPct >= 100) && !hasMissing && actualPct >= 100;
 
-    if (
-      currentUser &&
-      !isProfileComplete &&
-      currentUser.profile_completion_percentage !== undefined &&
-      Number(currentUser.profile_completion_percentage) < 100
-    ) {
-      setProfileCompletionPct(Number(currentUser.profile_completion_percentage) || 0);
-      setMissingFields(currentUser.missing_fields || []);
+    if (currentUser && (!isProfileComplete || actualPct < 100 || hasMissing)) {
+      setProfileCompletionPct(actualPct < 100 ? actualPct : (hasMissing ? 99 : actualPct));
+      setMissingFields(missingList);
       setIsProfileUnderReview(false);
       setProfileModalMessage('');
       setProfileModalVisible(true);
       return;
     }
 
-    if (currentUser && isProfileComplete && currentUser.is_profile_active === false) {
+    if (currentUser && isProfileComplete && (currentUser.is_profile_active === false || currentUser.is_profile_active === 0)) {
       setProfileCompletionPct(100);
       setMissingFields([]);
       setIsProfileUnderReview(true);
@@ -123,10 +119,11 @@ export default function CartScreen({ navigation }) {
     });
   };
 
-  const handleUpdateQty = async (productId, newQty) => {
-    setUpdatingId(productId);
+  const handleUpdateQty = async (item, newQty) => {
+    const uniqueKey = item.cart_id || `${item.product_id}_${item.size || ''}`;
+    setUpdatingId(uniqueKey);
     try {
-      const res = await updateQuantity(productId, newQty);
+      const res = await updateQuantity(item.cart_id, newQty, item.size, item.product_id);
       if (!res.success && res.message) {
         showAlert({
           title: 'Notice',
@@ -140,10 +137,11 @@ export default function CartScreen({ navigation }) {
   };
 
   const handleRemoveItem = (item) => {
-    const prodId = item.product_id || item.id;
+    const uniqueKey = item.cart_id || `${item.product_id}_${item.size || ''}`;
+    const sizeNote = item.size ? ` (Size: ${item.size})` : '';
     showAlert({
       title: 'Remove Item',
-      message: `Remove ${item.name || item.product_name} from your cart?`,
+      message: `Remove ${item.name || item.product_name}${sizeNote} from your cart?`,
       type: 'confirm',
       buttons: [
         { text: 'Cancel', style: 'cancel' },
@@ -151,9 +149,9 @@ export default function CartScreen({ navigation }) {
           text: 'Remove',
           style: 'destructive',
           onPress: async () => {
-            setUpdatingId(prodId);
+            setUpdatingId(uniqueKey);
             try {
-              await removeFromCart(prodId);
+              await removeFromCart(item.cart_id, item.product_id, item.size);
             } finally {
               setUpdatingId(null);
             }
@@ -243,8 +241,8 @@ export default function CartScreen({ navigation }) {
 
         {/* Cart Items */}
         {cartItems.map((item, index) => {
-          const prodId = item.product_id || item.id;
-          const isItemUpdating = updatingId === prodId;
+          const uniqueKey = item.cart_id ? `cart-${item.cart_id}` : `prod-${item.product_id}-${item.size || 'nosize'}-${index}`;
+          const isItemUpdating = updatingId === (item.cart_id || `${item.product_id}_${item.size || ''}`);
           const formattedPrice =
             typeof item.price === 'number'
               ? `₹${item.price.toLocaleString('en-IN')}`
@@ -253,7 +251,7 @@ export default function CartScreen({ navigation }) {
               : `₹${item.price}`;
 
           return (
-            <View key={`${prodId}-${index}`} style={styles.cartItem}>
+            <View key={uniqueKey} style={styles.cartItem}>
               {/* Product Thumbnail */}
               <View style={styles.itemImage}>
                 {item.image ? (
@@ -277,7 +275,7 @@ export default function CartScreen({ navigation }) {
                 <Text style={styles.itemPrice}>{formattedPrice}</Text>
                 {item.size ? (
                   <View style={styles.sizeBadge}>
-                    <Ionicons name="shirt-outline" size={11} color="#E64A78" />
+                    <Ionicons name="shirt-outline" size={12} color="#E64A78" />
                     <Text style={styles.sizeBadgeText}>Size: {item.size}</Text>
                   </View>
                 ) : null}
@@ -302,7 +300,7 @@ export default function CartScreen({ navigation }) {
                 <View style={styles.quantityControl}>
                   <TouchableOpacity
                     style={styles.qtyBtn}
-                    onPress={() => handleUpdateQty(prodId, item.quantity - 1)}
+                    onPress={() => handleUpdateQty(item, item.quantity - 1)}
                     activeOpacity={0.7}
                     disabled={isItemUpdating}
                   >
@@ -315,7 +313,7 @@ export default function CartScreen({ navigation }) {
 
                   <TouchableOpacity
                     style={styles.qtyBtn}
-                    onPress={() => handleUpdateQty(prodId, item.quantity + 1)}
+                    onPress={() => handleUpdateQty(item, item.quantity + 1)}
                     activeOpacity={0.7}
                     disabled={isItemUpdating}
                   >

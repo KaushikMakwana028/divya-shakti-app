@@ -915,8 +915,7 @@ export default function HomeScreen({ navigation }) {
                       {item.product_name}
                     </Text>
                     <Text style={styles.activityDate} numberOfLines={1}>
-                      Order #{item.order_id} • {formatDate(item.created_at)} •
-                      Qty: {item.quantity}
+                      {item.order_number ? `${item.order_number} • ` : ""}{formatDate(item.created_at)} • Qty: {item.quantity}
                     </Text>
                   </View>
 

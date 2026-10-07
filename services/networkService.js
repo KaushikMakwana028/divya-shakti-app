@@ -83,6 +83,37 @@ class NetworkService {
             };
         }
     }
+
+    // ─────────────────────────────────────────
+    // Get Member Profile, Hierarchy & Real Activities
+    // GET /api/get_member_details?id=...
+    // ─────────────────────────────────────────
+    async getMemberDetails(memberId) {
+        try {
+            const response = await this.api.get('/get_member_details', {
+                params: { id: memberId },
+            });
+            if (response.data && response.data.status) {
+                return {
+                    success: true,
+                    data: response.data.data,
+                    message: response.data.message || 'Member details fetched successfully',
+                };
+            }
+            return {
+                success: false,
+                data: null,
+                message: response.data?.message || 'Failed to fetch member details',
+            };
+        } catch (error) {
+            console.error('NetworkService getMemberDetails error:', error.response?.data || error.message);
+            return {
+                success: false,
+                data: null,
+                message: error.response?.data?.message || error.message || 'Failed to fetch member details',
+            };
+        }
+    }
 }
 
 export default new NetworkService();

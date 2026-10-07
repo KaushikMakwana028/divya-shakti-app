@@ -29,6 +29,7 @@ const MENU_SECTIONS = [
     items: [
       { icon: 'person-outline', label: 'Edit Profile', color: '#E64A78', route: 'EditProfile' },
       { icon: 'wallet-outline', label: 'My Wallet', color: '#C89738', route: 'Wallet' },
+      { icon: 'arrow-down-circle-outline', label: 'Deposit Money', color: '#E64A78', route: 'Deposit' },
       { icon: 'arrow-up-circle-outline', label: 'Withdraw Money', color: '#0E9F6E', route: 'Withdraw' },
       { icon: 'location-outline', label: 'My Addresses', color: '#27A462', route: 'Addresses' },
       { icon: 'document-text-outline', label: 'My Orders', color: '#7B61C4', route: 'Orders' },
@@ -243,7 +244,7 @@ export default function ProfileScreen() {
     } else if (item.label === 'Contact Us') {
       showAlert({
         title: 'Contact Support',
-        message: 'Have questions or need assistance? Reach out to our dedicated support team:\n\nEmail: support@divyashakti.com\nHelpline: +91 98765 43210\nHours: Mon - Sat (9:00 AM - 7:00 PM)',
+        message: 'Have questions or need assistance? Reach out to our dedicated support team:\n\nEmail: support@divyshakti.com\nHelpline: +91 98765 43210\nHours: Mon - Sat (9:00 AM - 7:00 PM)',
         type: 'info',
         buttons: [{ text: 'OK', style: 'default' }],
       });
@@ -414,15 +415,15 @@ export default function ProfileScreen() {
           ))}
         </View>
 
-        {/* Quick Wallet & Withdraw Card */}
+        {/* Quick Wallet, Deposit & Withdraw Card */}
         <View style={styles.walletWithdrawCard}>
           <TouchableOpacity
-            style={styles.walletWithdrawLeft}
+            style={styles.walletWithdrawTop}
             onPress={() => navigation.navigate('Wallet')}
             activeOpacity={0.7}
           >
             <View style={styles.walletWithdrawIconBox}>
-              <Ionicons name="wallet-outline" size={20} color="#0E9F6E" />
+              <Ionicons name="wallet-outline" size={22} color="#0E9F6E" />
             </View>
             <View style={styles.walletWithdrawInfo}>
               <Text style={styles.walletWithdrawSub} numberOfLines={1}>
@@ -442,15 +443,31 @@ export default function ProfileScreen() {
                 )}
               </View>
             </View>
+            <View style={styles.walletArrowBox}>
+              <Ionicons name="chevron-forward" size={18} color="#C5B8BD" />
+            </View>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.walletWithdrawBtn}
-            onPress={() => navigation.navigate('Withdraw')}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="arrow-up-circle" size={16} color="#FFFFFF" />
-            <Text style={styles.walletWithdrawBtnText}>Withdraw</Text>
-          </TouchableOpacity>
+
+          {/* Action Buttons Row: Deposit and Withdraw */}
+          <View style={styles.walletActionButtonsRow}>
+            <TouchableOpacity
+              style={styles.walletDepositBtn}
+              onPress={() => navigation.navigate('Deposit')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="arrow-down-circle" size={16} color="#FFFFFF" />
+              <Text style={styles.walletDepositBtnText}>Deposit</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.walletWithdrawBtn}
+              onPress={() => navigation.navigate('Withdraw')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="arrow-up-circle" size={16} color="#FFFFFF" />
+              <Text style={styles.walletWithdrawBtnText}>Withdraw</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Menu Sections */}
@@ -724,11 +741,7 @@ const styles = StyleSheet.create({
   walletWithdrawCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    padding: 16,
     marginBottom: 22,
     borderWidth: 1,
     borderColor: '#F0EAED',
@@ -738,17 +751,16 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
-  walletWithdrawLeft: {
+  walletWithdrawTop: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    flex: 1,
-    marginRight: 10,
+    marginBottom: 14,
   },
   walletWithdrawIconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: 'rgba(14, 159, 110, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -757,9 +769,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
+  walletArrowBox: {
+    padding: 4,
+  },
   walletWithdrawSub: {
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 11,
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 11.5,
     color: '#9E8E93',
     marginBottom: 2,
   },
@@ -771,7 +786,7 @@ const styles = StyleSheet.create({
   },
   walletWithdrawAmount: {
     fontFamily: 'Poppins_700Bold',
-    fontSize: 16.5,
+    fontSize: 18,
     color: '#2A1E24',
   },
   walletHoldBadge: {
@@ -790,20 +805,46 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#B45309',
   },
-  walletWithdrawBtn: {
+  walletActionButtonsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 10,
+    width: '100%',
+  },
+  walletDepositBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#E64A78',
+    paddingVertical: 11,
+    borderRadius: 13,
+    shadowColor: '#E64A78',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  walletDepositBtnText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 13,
+    color: '#FFFFFF',
+  },
+  walletWithdrawBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
     backgroundColor: '#0E9F6E',
-    paddingHorizontal: 15,
-    paddingVertical: 10,
+    paddingVertical: 11,
     borderRadius: 13,
     shadowColor: '#0E9F6E',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.25,
-    shadowRadius: 6,
+    shadowRadius: 5,
     elevation: 3,
-    flexShrink: 0,
   },
   walletWithdrawBtnText: {
     fontFamily: 'Poppins_600SemiBold',

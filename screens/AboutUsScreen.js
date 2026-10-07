@@ -13,7 +13,7 @@ import Header from '../components/Header';
 
 export default function AboutUsScreen({ navigation }) {
   const handleEmailPress = () => {
-    Linking.openURL('mailto:support@divyashakti.com').catch(() => {});
+    Linking.openURL('mailto:support@divyshakti.com').catch(() => {});
   };
 
   const handleWebsitePress = () => {
@@ -228,7 +228,7 @@ export default function AboutUsScreen({ navigation }) {
               </View>
               <View style={styles.contactInfoCol}>
                 <Text style={styles.contactLabel}>Email Support</Text>
-                <Text style={styles.contactValue}>support@divyashakti.com</Text>
+                <Text style={styles.contactValue}>support@divyshakti.com</Text>
               </View>
               <Ionicons name="open-outline" size={16} color="#9E8E93" />
             </TouchableOpacity>

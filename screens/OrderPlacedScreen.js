@@ -12,17 +12,21 @@ import { Ionicons } from '@expo/vector-icons';
 export default function OrderPlacedScreen({ route, navigation }) {
   const {
     orderIds = [],
+    orderNumber = null,
+    orderNumbers = [],
     totalAmountPaid = 0,
     newWalletBalance = 0,
     orders = [],
   } = route?.params || {};
 
-  const orderIdText =
-    orderIds.length > 1
-      ? orderIds.map((id) => `#${id}`).join(', ')
-      : orderIds.length === 1
-      ? `#${orderIds[0]}`
-      : 'N/A';
+  const primaryOrderNum =
+    orderNumber ||
+    (Array.isArray(orderNumbers) && orderNumbers.length > 0 ? orderNumbers.join(', ') : null) ||
+    (Array.isArray(orders) && orders[0]?.order_number ? orders.map(o => o.order_number).filter(Boolean).join(', ') : null);
+
+  const orderIdText = primaryOrderNum
+    ? primaryOrderNum
+    : 'Order Confirmed';
 
   const handleViewOrderDetails = () => {
     if (orderIds.length === 1) {

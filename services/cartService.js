@@ -113,7 +113,7 @@ class CartService {
     // Update Cart Quantity
     // POST /api/update_cart_quantity
     // ─────────────────────────────────────────
-    async updateCartQuantity(productId, quantity) {
+    async updateCartQuantity(cartIdOrProductId, quantity, productId = null, size = null) {
         try {
             const token = await storageService.getToken();
             if (!token) {
@@ -124,10 +124,24 @@ class CartService {
                 };
             }
 
-            const response = await this.api.post('/update_cart_quantity', {
-                product_id: Number(productId),
+            const payload = {
                 quantity: Number(quantity),
-            });
+            };
+
+            // Support both cart_id and product_id
+            if (cartIdOrProductId !== null && cartIdOrProductId !== undefined) {
+                payload.cart_id = Number(cartIdOrProductId);
+            }
+            if (productId !== null && productId !== undefined) {
+                payload.product_id = Number(productId);
+            } else if (!payload.cart_id && cartIdOrProductId) {
+                payload.product_id = Number(cartIdOrProductId);
+            }
+            if (size) {
+                payload.size = size;
+            }
+
+            const response = await this.api.post('/update_cart_quantity', payload);
 
             if (response.data && response.data.status) {
                 return {
@@ -156,7 +170,7 @@ class CartService {
     // Remove From Cart
     // POST /api/remove_from_cart
     // ─────────────────────────────────────────
-    async removeFromCart(productId) {
+    async removeFromCart(cartIdOrProductId, productId = null, size = null) {
         try {
             const token = await storageService.getToken();
             if (!token) {
@@ -166,9 +180,20 @@ class CartService {
                 };
             }
 
-            const response = await this.api.post('/remove_from_cart', {
-                product_id: Number(productId),
-            });
+            const payload = {};
+            if (cartIdOrProductId !== null && cartIdOrProductId !== undefined) {
+                payload.cart_id = Number(cartIdOrProductId);
+            }
+            if (productId !== null && productId !== undefined) {
+                payload.product_id = Number(productId);
+            } else if (!payload.cart_id && cartIdOrProductId) {
+                payload.product_id = Number(cartIdOrProductId);
+            }
+            if (size) {
+                payload.size = size;
+            }
+
+            const response = await this.api.post('/remove_from_cart', payload);
 
             if (response.data && response.data.status) {
                 return {

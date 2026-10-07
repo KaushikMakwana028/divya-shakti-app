@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
+import * as Clipboard from "expo-clipboard";
 import walletService from "../services/walletService";
 import { useAuth } from "../contexts/AuthContext";
 import { showAlert } from "../contexts/AlertContext";
@@ -30,30 +31,86 @@ const SHEET_MAX_HEIGHT = Math.min(Math.round(SCREEN_HEIGHT * 0.88), 750);
 const PRESET_AMOUNTS = [500, 1000, 2000, 5000];
 
 // ─────────────────────────────────────────
-// Small reusable row for the details sheet.
-// Label has a fixed width and the value is
-// allowed to flex + wrap onto multiple lines,
-// so long values (like admin notes) never sit
-// on top of the label again.
+// Clean, modern detail item row for bottom sheet
 // ─────────────────────────────────────────
-function DetailRow({ icon, label, value, valueColor, bold, last }) {
+function DetailRow({
+  icon,
+  label,
+  value,
+  valueColor,
+  bold,
+  copyable,
+  isNote,
+  last,
+}) {
   if (value === null || value === undefined || value === "") return null;
+
+  if (isNote) {
+    return (
+      <View style={[styles.detailNoteCard, last && { marginBottom: 0 }]}>
+        <View style={styles.detailNoteHeader}>
+          <View style={styles.detailNoteIconBox}>
+            <Ionicons
+              name={icon || "chatbox-ellipses-outline"}
+              size={13}
+              color="#E64A78"
+            />
+          </View>
+          <Text style={styles.detailNoteLabel}>{label}</Text>
+        </View>
+        <Text style={styles.detailNoteText}>{value}</Text>
+      </View>
+    );
+  }
+
+  const handleCopy = async () => {
+    if (!copyable) return;
+    try {
+      const cleanVal = String(value).replace(/^[#]/, "");
+      await Clipboard.setStringAsync(cleanVal);
+      showAlert({
+        title: "Copied",
+        message: `${label} copied to clipboard!`,
+        type: "success",
+      });
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const RowWrapper = copyable ? TouchableOpacity : View;
+
   return (
-    <View style={[styles.detailRow, last && { borderBottomWidth: 0 }]}>
+    <RowWrapper
+      style={[styles.detailRow, last && styles.detailRowLast]}
+      onPress={copyable ? handleCopy : undefined}
+      activeOpacity={copyable ? 0.7 : 1}
+    >
       <View style={styles.detailLabelWrap}>
-        <Ionicons name={icon} size={15} color="#9E8E93" />
+        <View style={styles.detailIconBox}>
+          <Ionicons name={icon} size={15} color="#8E7D86" />
+        </View>
         <Text style={styles.detailLabel}>{label}</Text>
       </View>
-      <Text
-        style={[
-          styles.detailValue,
-          valueColor ? { color: valueColor } : null,
-          bold && { fontFamily: "Poppins_700Bold" },
-        ]}
-      >
-        {value}
-      </Text>
-    </View>
+
+      <View style={styles.detailValueWrap}>
+        <Text
+          style={[
+            styles.detailValue,
+            valueColor ? { color: valueColor } : null,
+            bold && styles.detailValueBold,
+          ]}
+          numberOfLines={2}
+        >
+          {value}
+        </Text>
+        {copyable && (
+          <View style={styles.copyIconBadge}>
+            <Ionicons name="copy-outline" size={11} color="#8E7D86" />
+          </View>
+        )}
+      </View>
+    </RowWrapper>
   );
 }
 
@@ -69,6 +126,23 @@ export default function WalletScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState("transactions"); // 'transactions' | 'deposits'
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Scroll & Tabs Measurement for History Button Jump
+  const scrollViewRef = useRef(null);
+  const [tabSectionY, setTabSectionY] = useState(0);
+
+  const handlePressHistory = () => {
+    setActiveTab("transactions");
+    setTimeout(() => {
+      if (scrollViewRef.current) {
+        const targetY = tabSectionY > 0 ? Math.max(tabSectionY - 10, 0) : 250;
+        scrollViewRef.current.scrollTo({
+          y: targetY,
+          animated: true,
+        });
+      }
+    }, 50);
+  };
 
   // Pagination State (10 items per page)
   const ITEMS_PER_PAGE = 10;
@@ -488,6 +562,7 @@ export default function WalletScreen({ navigation }) {
       </View>
 
       <ScrollView
+        ref={scrollViewRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.container}
         refreshControl={
@@ -537,7 +612,7 @@ export default function WalletScreen({ navigation }) {
           <View style={styles.heroActionRow}>
             <TouchableOpacity
               style={styles.depositBtn}
-              onPress={() => setDepositModalVisible(true)}
+              onPress={() => navigation.navigate("Deposit")}
               activeOpacity={0.85}
             >
               <Ionicons name="add-circle" size={16} color="#FFFFFF" />
@@ -555,7 +630,7 @@ export default function WalletScreen({ navigation }) {
 
             <TouchableOpacity
               style={styles.historyBtn}
-              onPress={() => setActiveTab("transactions")}
+              onPress={handlePressHistory}
               activeOpacity={0.85}
             >
               <Ionicons name="time-outline" size={15} color="#FFFFFF" />
@@ -569,7 +644,10 @@ export default function WalletScreen({ navigation }) {
         </View>
 
         {/* ── Segmented Tab Selector ── */}
-        <View style={styles.tabContainer}>
+        <View
+          style={styles.tabContainer}
+          onLayout={(e) => setTabSectionY(e.nativeEvent.layout.y)}
+        >
           <TouchableOpacity
             style={[
               styles.tabBtn,
@@ -1303,13 +1381,6 @@ export default function WalletScreen({ navigation }) {
               <View style={styles.modalHeaderRow}>
                 <View style={styles.detailsHeaderLeft}>
                   <Text style={styles.modalTitle}>Deposit Details</Text>
-                  {selectedDepositRequest?.id ? (
-                    <View style={styles.detailsIdBadge}>
-                      <Text style={styles.detailsIdBadgeText}>
-                        #REQ-{selectedDepositRequest.id}
-                      </Text>
-                    </View>
-                  ) : null}
                 </View>
                 <TouchableOpacity
                   style={styles.detailsCloseBtn}
@@ -1462,11 +1533,6 @@ export default function WalletScreen({ navigation }) {
                     </View>
 
                     <DetailRow
-                      icon="receipt-outline"
-                      label="Transaction ID"
-                      value={`#TXN-${selectedDepositRequest.transaction.id}`}
-                    />
-                    <DetailRow
                       icon="add-circle-outline"
                       label="Amount Added"
                       value={`+ ₹${Number(
@@ -1475,21 +1541,23 @@ export default function WalletScreen({ navigation }) {
                       valueColor="#27A462"
                       bold
                     />
-                    {selectedDepositRequest.transaction.remark ? (
-                      <DetailRow
-                        icon="chatbox-outline"
-                        label="Admin Note"
-                        value={selectedDepositRequest.transaction.remark}
-                      />
-                    ) : null}
                     <DetailRow
                       icon="time-outline"
                       label="Credited At"
                       value={formatDate(
                         selectedDepositRequest.transaction.created_at,
                       )}
-                      last
+                      last={!selectedDepositRequest.transaction.remark}
                     />
+                    {selectedDepositRequest.transaction.remark ? (
+                      <DetailRow
+                        icon="chatbox-outline"
+                        label="Admin Note"
+                        value={selectedDepositRequest.transaction.remark}
+                        isNote
+                        last
+                      />
+                    ) : null}
                   </View>
                 )}
 
@@ -1523,11 +1591,6 @@ export default function WalletScreen({ navigation }) {
                     }
                   />
                   <DetailRow
-                    icon="finger-print-outline"
-                    label="Reference ID"
-                    value={`#${selectedDepositRequest.id}`}
-                  />
-                  <DetailRow
                     icon="calendar-outline"
                     label="Requested On"
                     value={
@@ -1535,27 +1598,33 @@ export default function WalletScreen({ navigation }) {
                       formatDate(selectedDepositRequest.created_at)
                     }
                   />
-                  <DetailRow
-                    icon="time-outline"
-                    label="Processed On"
-                    value={
-                      selectedDepositRequest.formatted_updated_at ||
-                      (selectedDepositRequest.updated_at
-                        ? formatDate(selectedDepositRequest.updated_at)
-                        : null)
-                    }
-                  />
-                  <DetailRow
-                    icon="shield-checkmark-outline"
-                    label="Reviewed By"
-                    value={selectedDepositRequest.action_by_name}
-                  />
-                  <DetailRow
-                    icon="chatbox-ellipses-outline"
-                    label="Note"
-                    value={selectedDepositRequest.remark}
-                    last
-                  />
+                  {selectedDepositRequest.updated_at ? (
+                    <DetailRow
+                      icon="time-outline"
+                      label="Processed On"
+                      value={
+                        selectedDepositRequest.formatted_updated_at ||
+                        formatDate(selectedDepositRequest.updated_at)
+                      }
+                    />
+                  ) : null}
+                  {selectedDepositRequest.action_by_name ? (
+                    <DetailRow
+                      icon="shield-checkmark-outline"
+                      label="Reviewed By"
+                      value={selectedDepositRequest.action_by_name}
+                      last={!selectedDepositRequest.remark}
+                    />
+                  ) : null}
+                  {selectedDepositRequest.remark ? (
+                    <DetailRow
+                      icon="chatbox-ellipses-outline"
+                      label="Member Note / UTR"
+                      value={selectedDepositRequest.remark}
+                      isNote
+                      last
+                    />
+                  ) : null}
                 </View>
 
                 {/* 4. Payment Proof / Receipt */}
@@ -1618,7 +1687,7 @@ export default function WalletScreen({ navigation }) {
                               <Image
                                 source={{ uri: proofUrl }}
                                 style={styles.imageProofImg}
-                                resizeMode="cover"
+                                resizeMode="contain"
                                 onLoadStart={() => setReceiptImgLoading(true)}
                                 onLoadEnd={() => setReceiptImgLoading(false)}
                                 onError={() => {
@@ -2945,41 +3014,102 @@ const styles = StyleSheet.create({
     height: 200,
   },
 
-  // ── Fixed row layout: label has a fixed max width, value
-  // flexes and wraps beneath/beside it so nothing overlaps.
-  detailsInfoRow: {
+  // ── Bottom Sheet Detail Row Styles ──
+  detailRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 8,
+    paddingVertical: 11,
     borderBottomWidth: 1,
-    borderBottomColor: "#FAF7F8",
-    gap: 10,
+    borderBottomColor: "#F5EFF2",
+    gap: 12,
   },
-  detailsInfoRowLast: {
+  detailRowLast: {
     borderBottomWidth: 0,
+    paddingBottom: 2,
   },
-  detailsInfoRowLeft: {
+  detailLabelWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flexShrink: 0,
+  },
+  detailIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "#FAF7F8",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#F0EAED",
+  },
+  detailLabel: {
+    fontFamily: "Poppins_400Regular",
+    fontSize: 12.5,
+    color: "#7E6E75",
+  },
+  detailValueWrap: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 6,
+  },
+  detailValue: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 13,
+    color: "#2A1E24",
+    textAlign: "right",
+    flexShrink: 1,
+  },
+  detailValueBold: {
+    fontFamily: "Poppins_700Bold",
+    fontSize: 13.5,
+  },
+  copyIconBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: "#FAF7F8",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#F0EAED",
+  },
+  detailNoteCard: {
+    backgroundColor: "#FAF7F8",
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 10,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: "#F0EAED",
+  },
+  detailNoteHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    width: 108,
-    flexShrink: 0,
-    paddingTop: 1,
+    marginBottom: 6,
   },
-  detailsInfoLabel: {
-    fontFamily: "Poppins_400Regular",
-    fontSize: 12,
-    color: "#9E8E93",
+  detailNoteIconBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    backgroundColor: "rgba(230,74,120,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  detailsInfoValue: {
-    flex: 1,
+  detailNoteLabel: {
     fontFamily: "Poppins_600SemiBold",
+    fontSize: 11.5,
+    color: "#E64A78",
+  },
+  detailNoteText: {
+    fontFamily: "Poppins_400Regular",
     fontSize: 12.5,
-    color: "#2A1E24",
-    textAlign: "right",
-    flexWrap: "wrap",
-    lineHeight: 17,
+    color: "#4B3E45",
+    lineHeight: 18,
   },
 
   pdfCard: {
@@ -3025,7 +3155,8 @@ const styles = StyleSheet.create({
   },
   imageProofImg: {
     width: "100%",
-    height: 200,
+    height: 220,
+    backgroundColor: "#FAF7F8",
   },
   imageProofOverlay: {
     position: "absolute",

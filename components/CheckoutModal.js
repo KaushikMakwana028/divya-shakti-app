@@ -338,7 +338,7 @@ export default function CheckoutModal({
                 <View style={styles.orderBadgeRow}>
                   <Ionicons name="receipt-outline" size={16} color="#E64A78" />
                   <Text style={styles.orderBadgeText}>
-                    Order #{confirmedOrders.map((o) => o.id).join(', #')}
+                    {confirmedOrders.map((o) => o.order_number || 'Order Confirmed').join(', ')}
                   </Text>
                 </View>
               )}

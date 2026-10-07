@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   Platform,
   PanResponder,
 } from 'react-native';
-import Svg, { Line, Circle, Rect, G } from 'react-native-svg';
+import Svg, { Line, Circle, G } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -21,12 +21,13 @@ const CARD_HEIGHT = 68;
 const GAP_X = 22; // Horizontal gap between sibling subtrees
 const GAP_Y = 125; // Vertical distance between levels
 const ROOT_GAP_X = 36; // Gap between Level-1 root trees
-const PADDING_X = 30;
-const PADDING_Y = 30;
+const PADDING_X = 24;
+const PADDING_Y = 24;
 
 export default function NetworkTreeGraph({
   data = [],
   searchQuery = '',
+  isFocused = true,
   onSelectMember,
 }) {
   const [zoomScale, setZoomScale] = useState(0.85); // Default comfortable zoom on mobile
@@ -72,10 +73,16 @@ export default function NetworkTreeGraph({
     [zoomScale]
   );
 
-  // Compute 2D tree layout coordinates
-  const { positions, edges, canvasWidth, canvasHeight } = useMemo(() => {
+  // Compute 2D tree layout coordinates with strict centering and normalization
+  const { positions, edges, canvasWidth, canvasHeight, rootCenterUnscaled } = useMemo(() => {
     if (!data || data.length === 0) {
-      return { positions: [], edges: [], canvasWidth: SCREEN_WIDTH, canvasHeight: 400 };
+      return {
+        positions: [],
+        edges: [],
+        canvasWidth: SCREEN_WIDTH,
+        canvasHeight: 400,
+        rootCenterUnscaled: SCREEN_WIDTH / 2,
+      };
     }
 
     // 1. Recursive calculation of subtree widths
@@ -100,7 +107,7 @@ export default function NetworkTreeGraph({
     const edgeList = [];
     let maxLevel = 0;
 
-    // 2. Assign positions
+    // 2. Assign initial positions
     function assignPositions(node, left, level) {
       if (level > maxLevel) maxLevel = level;
       const y = level * GAP_Y + PADDING_Y;
@@ -157,16 +164,106 @@ export default function NetworkTreeGraph({
       currentLeft += root._subtreeWidth + ROOT_GAP_X;
     });
 
-    const calculatedWidth = Math.max(SCREEN_WIDTH, currentLeft + PADDING_X);
-    const calculatedHeight = (maxLevel + 1) * GAP_Y + CARD_HEIGHT + PADDING_Y * 2;
+    // 3. Normalization: eliminate any unused left whitespace and center properly
+    if (posList.length > 0) {
+      let minX = Infinity;
+      let maxX = -Infinity;
+      posList.forEach((p) => {
+        if (p.x < minX) minX = p.x;
+        if (p.x + CARD_WIDTH > maxX) maxX = p.x + CARD_WIDTH;
+      });
+
+      const totalTreeWidth = maxX - minX;
+
+      // Ensure canvas at minimum covers the viewport width when scaled
+      const minCanvasToCoverScreen = Math.ceil(SCREEN_WIDTH / zoomScale);
+      const calculatedWidth = Math.max(minCanvasToCoverScreen, totalTreeWidth + PADDING_X * 2);
+      const calculatedHeight = (maxLevel + 1) * GAP_Y + CARD_HEIGHT + PADDING_Y * 2;
+
+      // If tree width fits within calculatedWidth, center it perfectly!
+      // If wider, keep leftmost node cleanly at PADDING_X (24px)
+      const desiredLeft = totalTreeWidth <= minCanvasToCoverScreen - PADDING_X * 2
+        ? Math.round((calculatedWidth - totalTreeWidth) / 2)
+        : PADDING_X;
+
+      const shiftX = Math.round(desiredLeft - minX);
+
+      if (shiftX !== 0) {
+        posList.forEach((p) => {
+          p.x += shiftX;
+        });
+        edgeList.forEach((e) => {
+          e.parentX += shiftX;
+          e.childrenCenters = e.childrenCenters.map((c) => c + shiftX);
+        });
+      }
+
+      const rootNode = posList[0];
+      const rootCenter = rootNode ? rootNode.x + CARD_WIDTH / 2 : calculatedWidth / 2;
+
+      return {
+        positions: posList,
+        edges: edgeList,
+        canvasWidth: calculatedWidth,
+        canvasHeight: calculatedHeight,
+        rootCenterUnscaled: rootCenter,
+      };
+    }
 
     return {
       positions: posList,
       edges: edgeList,
-      canvasWidth: calculatedWidth,
-      canvasHeight: calculatedHeight,
+      canvasWidth: SCREEN_WIDTH,
+      canvasHeight: (maxLevel + 1) * GAP_Y + CARD_HEIGHT + PADDING_Y * 2,
+      rootCenterUnscaled: SCREEN_WIDTH / 2,
     };
-  }, [data]);
+  }, [data, zoomScale]);
+
+  // Auto-center the tree on the Root Node so it is visible immediately without white screen
+  const autoCenterRoot = useCallback(
+    (animated = false) => {
+      if (positions.length > 0 && scrollHRef.current) {
+        const rootCenterX = 16 + rootCenterUnscaled * zoomScale;
+        const initialScrollX = Math.max(0, Math.round(rootCenterX - SCREEN_WIDTH / 2));
+        scrollHRef.current?.scrollTo({ x: initialScrollX, y: 0, animated });
+      }
+    },
+    [positions, rootCenterUnscaled, zoomScale]
+  );
+
+  // Trigger auto-centering on mount, on screen focus, or when data/positions change
+  useEffect(() => {
+    if (isFocused && positions.length > 0) {
+      const t1 = setTimeout(() => autoCenterRoot(false), 30);
+      const t2 = setTimeout(() => autoCenterRoot(false), 150);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    }
+  }, [isFocused, positions, autoCenterRoot]);
+
+  // Scroll to search match if present
+  useEffect(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q.length > 0 && positions.length > 0 && scrollHRef.current) {
+      const matched = positions.find(
+        (n) =>
+          (n.name && n.name.toLowerCase().includes(q)) ||
+          (n.code && n.code.toLowerCase().includes(q)) ||
+          (n.referral_code && n.referral_code.toLowerCase().includes(q))
+      );
+      if (matched) {
+        const nodeCenterX = (matched.x + CARD_WIDTH / 2) * zoomScale;
+        const targetScrollX = Math.max(0, nodeCenterX - SCREEN_WIDTH / 2);
+        const nodeCenterY = (matched.y + CARD_HEIGHT / 2) * zoomScale;
+        const targetScrollY = Math.max(0, nodeCenterY - 120);
+
+        scrollHRef.current?.scrollTo({ x: targetScrollX, animated: true });
+        scrollVRef.current?.scrollTo({ y: targetScrollY, animated: true });
+      }
+    }
+  }, [searchQuery, positions, zoomScale]);
 
   const handleZoomIn = () => {
     setZoomScale((prev) => Math.min(Number((prev + 0.15).toFixed(2)), 1.3));
@@ -178,9 +275,24 @@ export default function NetworkTreeGraph({
 
   const handleZoomReset = () => {
     setZoomScale(0.85);
+    setTimeout(() => {
+      autoCenterRoot(true);
+    }, 60);
   };
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  // Cross-platform transform origin simulation
+  const scaledWidth = canvasWidth * zoomScale;
+  const scaledHeight = canvasHeight * zoomScale;
+  const translateX = -(canvasWidth * (1 - zoomScale)) / 2;
+  const translateY = -(canvasHeight * (1 - zoomScale)) / 2;
+
+  // Immediate initial scroll position for frame-0 rendering
+  const initialScrollX = useMemo(() => {
+    const rootCenterX = 16 + rootCenterUnscaled * zoomScale;
+    return Math.max(0, Math.round(rootCenterX - SCREEN_WIDTH / 2));
+  }, [rootCenterUnscaled, zoomScale]);
 
   return (
     <View style={styles.container} {...panResponder.panHandlers}>
@@ -224,172 +336,186 @@ export default function NetworkTreeGraph({
       <ScrollView
         ref={scrollVRef}
         style={styles.outerScroll}
-        contentContainerStyle={{ minHeight: canvasHeight * zoomScale + 60 }}
+        contentContainerStyle={{ minHeight: scaledHeight + 60, paddingVertical: 10 }}
         showsVerticalScrollIndicator={false}
       >
         <ScrollView
           ref={scrollHRef}
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ minWidth: canvasWidth * zoomScale + 60 }}
+          contentOffset={{ x: initialScrollX, y: 0 }}
+          onContentSizeChange={() => {
+            autoCenterRoot(false);
+          }}
+          contentContainerStyle={{ minWidth: scaledWidth + 32, paddingHorizontal: 16 }}
         >
-          <View
-            style={[
-              styles.canvas,
-              {
-                width: canvasWidth,
-                height: canvasHeight,
-                transform: [{ scale: zoomScale }],
-                transformOrigin: 'top left',
-              },
-            ]}
-          >
-            {/* SVG Connector Layer */}
-            <Svg width={canvasWidth} height={canvasHeight} style={StyleSheet.absoluteFill}>
-              {edges.map((edge, index) => {
-                const firstChildX = edge.childrenCenters[0];
-                const lastChildX = edge.childrenCenters[edge.childrenCenters.length - 1];
+          {/* Scaled wrapper to avoid React Native center-scaling shifts */}
+          <View style={{ width: scaledWidth, height: scaledHeight }}>
+            <View
+              style={[
+                styles.canvas,
+                {
+                  width: canvasWidth,
+                  height: canvasHeight,
+                  transform: [
+                    { translateX },
+                    { translateY },
+                    { scale: zoomScale },
+                  ],
+                },
+              ]}
+            >
+              {/* SVG Connector Layer */}
+              <Svg width={canvasWidth} height={canvasHeight} style={StyleSheet.absoluteFill}>
+                {edges.map((edge, index) => {
+                  const firstChildX = edge.childrenCenters[0];
+                  const lastChildX = edge.childrenCenters[edge.childrenCenters.length - 1];
+
+                  return (
+                    <G key={`edge-group-${index}`}>
+                      {/* Vertical stem down from parent card */}
+                      <Line
+                        x1={edge.parentX}
+                        y1={edge.parentY}
+                        x2={edge.parentX}
+                        y2={edge.midY}
+                        stroke="#CBD5E1"
+                        strokeWidth={2}
+                      />
+
+                      {/* Central circular junction dot (matches web screenshot) */}
+                      <Circle
+                        cx={edge.parentX}
+                        cy={edge.midY}
+                        r={4.5}
+                        fill="#FFFFFF"
+                        stroke="#C89738"
+                        strokeWidth={2}
+                      />
+
+                      {/* Horizontal crossbar connecting all children */}
+                      <Line
+                        x1={firstChildX}
+                        y1={edge.midY}
+                        x2={lastChildX}
+                        y2={edge.midY}
+                        stroke="#CBD5E1"
+                        strokeWidth={2}
+                      />
+
+                      {/* Vertical drop down to each child card */}
+                      {edge.childrenCenters.map((cX, cIdx) => (
+                        <G key={`child-link-${index}-${cIdx}`}>
+                          <Line
+                            x1={cX}
+                            y1={edge.midY}
+                            x2={cX}
+                            y2={edge.childY}
+                            stroke="#CBD5E1"
+                            strokeWidth={2}
+                          />
+                          {/* Dot entering child card top */}
+                          <Circle
+                            cx={cX}
+                            cy={edge.childY}
+                            r={3}
+                            fill="#CBD5E1"
+                          />
+                        </G>
+                      ))}
+                    </G>
+                  );
+                })}
+              </Svg>
+
+              {/* Tree Node Cards */}
+              {positions.map((node) => {
+                const isMatch =
+                  normalizedQuery.length > 0 &&
+                  ((node.name && node.name.toLowerCase().includes(normalizedQuery)) ||
+                    (node.code && node.code.toLowerCase().includes(normalizedQuery)) ||
+                    (node.referral_code && node.referral_code.toLowerCase().includes(normalizedQuery)));
+
+                const isDimmed = normalizedQuery.length > 0 && !isMatch;
+                const cardBorder = isMatch
+                  ? '#E64A78'
+                  : node.badgeColor || '#C89738';
 
                 return (
-                  <G key={`edge-group-${index}`}>
-                    {/* Vertical stem down from parent card */}
-                    <Line
-                      x1={edge.parentX}
-                      y1={edge.parentY}
-                      x2={edge.parentX}
-                      y2={edge.midY}
-                      stroke="#CBD5E1"
-                      strokeWidth={2}
-                    />
-
-                    {/* Central circular junction dot (matches web screenshot) */}
-                    <Circle
-                      cx={edge.parentX}
-                      cy={edge.midY}
-                      r={4.5}
-                      fill="#FFFFFF"
-                      stroke="#C89738"
-                      strokeWidth={2}
-                    />
-
-                    {/* Horizontal crossbar connecting all children */}
-                    <Line
-                      x1={firstChildX}
-                      y1={edge.midY}
-                      x2={lastChildX}
-                      y2={edge.midY}
-                      stroke="#CBD5E1"
-                      strokeWidth={2}
-                    />
-
-                    {/* Vertical drop down to each child card */}
-                    {edge.childrenCenters.map((cX, cIdx) => (
-                      <G key={`child-link-${index}-${cIdx}`}>
-                        <Line
-                          x1={cX}
-                          y1={edge.midY}
-                          x2={cX}
-                          y2={edge.childY}
-                          stroke="#CBD5E1"
-                          strokeWidth={2}
+                  <TouchableOpacity
+                    key={node.id}
+                    activeOpacity={0.85}
+                    onPress={() => onSelectMember && onSelectMember(node)}
+                    style={[
+                      styles.cardContainer,
+                      {
+                        left: node.x,
+                        top: node.y,
+                        borderColor: cardBorder,
+                        opacity: isDimmed ? 0.35 : 1,
+                      },
+                      isMatch && styles.matchedCard,
+                    ]}
+                  >
+                    {/* Left: Avatar / Initials Badge */}
+                    <View style={styles.avatarWrap}>
+                      {node.avatar || node.profile_image ? (
+                        <Image
+                          source={{ uri: node.avatar || node.profile_image }}
+                          style={styles.avatarImg}
                         />
-                        {/* Dot entering child card top */}
-                        <Circle
-                          cx={cX}
-                          cy={edge.childY}
-                          r={3}
-                          fill="#CBD5E1"
-                        />
-                      </G>
-                    ))}
-                  </G>
-                );
-              })}
-            </Svg>
-
-            {/* Tree Node Cards */}
-            {positions.map((node) => {
-              const isMatch =
-                normalizedQuery.length > 0 &&
-                (node.name?.toLowerCase().includes(normalizedQuery) ||
-                  node.code?.toLowerCase().includes(normalizedQuery));
-
-              const isDimmed = normalizedQuery.length > 0 && !isMatch;
-              const cardBorder = isMatch
-                ? '#E64A78'
-                : node.badgeColor || '#C89738';
-
-              return (
-                <TouchableOpacity
-                  key={node.id}
-                  activeOpacity={0.85}
-                  onPress={() => onSelectMember && onSelectMember(node)}
-                  style={[
-                    styles.cardContainer,
-                    {
-                      left: node.x,
-                      top: node.y,
-                      borderColor: cardBorder,
-                      opacity: isDimmed ? 0.35 : 1,
-                    },
-                    isMatch && styles.matchedCard,
-                  ]}
-                >
-                  {/* Left: Avatar / Initials Badge */}
-                  <View style={styles.avatarWrap}>
-                    {node.avatar ? (
-                      <Image source={{ uri: node.avatar }} style={styles.avatarImg} />
-                    ) : (
-                      <View
-                        style={[
-                          styles.initialsBadge,
-                          { backgroundColor: (node.badgeColor || '#E64A78') + '18' },
-                        ]}
-                      >
-                        <Text
+                      ) : (
+                        <View
                           style={[
-                            styles.initialsText,
-                            { color: node.badgeColor || '#E64A78' },
+                            styles.initialsBadge,
+                            { backgroundColor: (node.badgeColor || '#E64A78') + '18' },
                           ]}
                         >
-                          {node.initials || node.name?.substring(0, 2).toUpperCase() || 'DS'}
-                        </Text>
+                          <Text
+                            style={[
+                              styles.initialsText,
+                              { color: node.badgeColor || '#E64A78' },
+                            ]}
+                          >
+                            {node.initials || node.name?.substring(0, 2).toUpperCase() || 'DS'}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Right: Info Lines */}
+                    <View style={styles.infoCol}>
+                      <Text style={styles.nodeName} numberOfLines={1}>
+                        {node.name}
+                      </Text>
+
+                      <Text style={styles.nodeCode} numberOfLines={1}>
+                        Code: <Text style={styles.nodeCodeVal}>{node.code || node.referral_code}</Text>
+                      </Text>
+
+                      <Text style={styles.nodeSlot} numberOfLines={1}>
+                        Slot: <Text style={styles.nodeSlotVal}>{node.slot || '₹0.00'}</Text>
+                      </Text>
+                    </View>
+
+                    {/* Level indicator pill */}
+                    <View style={[styles.levelTag, { backgroundColor: (node.badgeColor || '#C89738') + '15' }]}>
+                      <Text style={[styles.levelTagText, { color: node.badgeColor || '#C89738' }]}>
+                        L{node.level}
+                      </Text>
+                    </View>
+
+                    {/* Downline count indicator if has children */}
+                    {node.children && node.children.length > 0 && (
+                      <View style={styles.childrenPill}>
+                        <Ionicons name="people" size={9} color="#64748B" />
+                        <Text style={styles.childrenPillText}>{node.children.length}</Text>
                       </View>
                     )}
-                  </View>
-
-                  {/* Right: Info Lines */}
-                  <View style={styles.infoCol}>
-                    <Text style={styles.nodeName} numberOfLines={1}>
-                      {node.name}
-                    </Text>
-
-                    <Text style={styles.nodeCode} numberOfLines={1}>
-                      Code: <Text style={styles.nodeCodeVal}>{node.code}</Text>
-                    </Text>
-
-                    <Text style={styles.nodeSlot} numberOfLines={1}>
-                      Slot: <Text style={styles.nodeSlotVal}>{node.slot}</Text>
-                    </Text>
-                  </View>
-
-                  {/* Level indicator pill */}
-                  <View style={[styles.levelTag, { backgroundColor: (node.badgeColor || '#C89738') + '15' }]}>
-                    <Text style={[styles.levelTagText, { color: node.badgeColor || '#C89738' }]}>
-                      L{node.level}
-                    </Text>
-                  </View>
-
-                  {/* Downline count indicator if has children */}
-                  {node.children && node.children.length > 0 && (
-                    <View style={styles.childrenPill}>
-                      <Ionicons name="people" size={9} color="#64748B" />
-                      <Text style={styles.childrenPillText}>{node.children.length}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
         </ScrollView>
       </ScrollView>

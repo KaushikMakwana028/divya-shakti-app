@@ -199,7 +199,9 @@ export default function OrdersScreen({ navigation }) {
         >
           <View style={styles.cardHeader}>
             <View style={styles.orderIdGroup}>
-              <Text style={styles.orderIdText}>Order #{item.id}</Text>
+              <Text style={styles.orderIdText}>
+                {item.order_number || "Order"}
+              </Text>
               <View style={styles.orderDateRow}>
                 <Ionicons name="time-outline" size={11} color="#9E8E93" />
                 <Text style={styles.orderDate}>{formatDate(item.created_at)}</Text>

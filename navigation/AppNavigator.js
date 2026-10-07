@@ -21,6 +21,7 @@ import CheckoutReviewScreen from "../screens/CheckoutReviewScreen";
 import OrderPlacedScreen from "../screens/OrderPlacedScreen";
 import WalletScreen from "../screens/WalletScreen";
 import WithdrawScreen from "../screens/WithdrawScreen";
+import DepositScreen from "../screens/DepositScreen";
 import AddressScreen from "../screens/AddressScreen";
 import OrdersScreen from "../screens/OrdersScreen";
 import OrderDetailsScreen from "../screens/OrderDetailsScreen";
@@ -138,6 +139,11 @@ export default function AppNavigator() {
         <Stack.Screen
           name="Wallet"
           component={WalletScreen}
+          options={{ animation: "slide_from_right" }}
+        />
+        <Stack.Screen
+          name="Deposit"
+          component={DepositScreen}
           options={{ animation: "slide_from_right" }}
         />
         <Stack.Screen

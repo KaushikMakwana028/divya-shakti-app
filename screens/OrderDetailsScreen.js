@@ -164,10 +164,11 @@ export default function OrderDetailsScreen({ route, navigation }) {
     const isPaid = Boolean(
       order.is_paid || order.status?.toLowerCase() === "confirmed" || order.status?.toLowerCase() === "placed"
     );
+    const displayId = order?.order_number ? `Order ${order.order_number}` : 'this order';
     const alertTitle = isPaid ? "Cancel Order & Refund" : "Cancel Order";
     const alertMsg = isPaid
-      ? `Are you sure you want to cancel Order #${order.id}? The paid amount of ₹${Number(order.amount || 0).toLocaleString("en-IN")} will be refunded immediately to your Divy Shakti wallet.`
-      : `Are you sure you want to cancel Order #${order.id}?`;
+      ? `Are you sure you want to cancel ${displayId}? The paid amount of ₹${Number(order.amount || 0).toLocaleString("en-IN")} will be refunded immediately to your Divy Shakti wallet.`
+      : `Are you sure you want to cancel ${displayId}?`;
 
     Alert.alert(alertTitle, alertMsg, [
       { text: "Keep Order", style: "cancel" },
@@ -183,8 +184,8 @@ export default function OrderDetailsScreen({ route, navigation }) {
               const isRefundIssued = Boolean(res.data?.refund_issued || res.data?.was_paid);
               const refundAmt = Number(res.data?.refund_amount || order.amount || 0);
               const toastMsg = isRefundIssued
-                ? `Order #${order.id} cancelled. ₹${refundAmt.toLocaleString("en-IN")} has been refunded to your wallet.`
-                : res.message || `Order #${order.id} cancelled successfully.`;
+                ? `Order ${displayId} cancelled. ₹${refundAmt.toLocaleString("en-IN")} has been refunded to your wallet.`
+                : res.message || `Order ${displayId} cancelled successfully.`;
 
               Alert.alert("Order Cancelled", toastMsg);
               fetchDetails();
@@ -263,7 +264,7 @@ export default function OrderDetailsScreen({ route, navigation }) {
           >
             <Ionicons name="arrow-back" size={20} color="#2A1E24" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Order #{orderId || ""}</Text>
+          <Text style={styles.headerTitle}>Order Details</Text>
           <View style={{ width: 38 }} />
         </View>
         <View style={styles.loaderCenter}>
@@ -326,7 +327,9 @@ export default function OrderDetailsScreen({ route, navigation }) {
         >
           <Ionicons name="arrow-back" size={20} color="#2A1E24" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Order #{order.id}</Text>
+        <Text style={styles.headerTitle}>
+          {order.order_number ? order.order_number : "Order Details"}
+        </Text>
         <View style={{ width: 38 }} />
       </View>
 
@@ -623,6 +626,12 @@ export default function OrderDetailsScreen({ route, navigation }) {
         {/* Price Breakdown Card */}
         <View style={styles.sectionCard}>
           <Text style={styles.sectionHeader}>Price Summary</Text>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Order ID</Text>
+            <Text style={[styles.summaryValue, { fontWeight: "700", color: "#2A1E24" }]}>
+              {order.order_number || "-"}
+            </Text>
+          </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>
               Item Subtotal ({order.quantity}{" "}

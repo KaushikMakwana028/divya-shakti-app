@@ -82,7 +82,7 @@ export default function CheckoutReviewScreen({ route, navigation }) {
             // Check if already paid or no longer pending
             const isAlreadyPaid = Boolean(ord.is_paid || (ord.status && ord.status.toLowerCase() !== 'pending'));
             if (isAlreadyPaid) {
-              setErrorMessage(`Payment has already been completed for Order #${ord.id}.`);
+              setErrorMessage(`Payment has already been completed for Order ${ord.order_number || ''}.`);
               setErrorType('already_paid');
               setStoredOrderIds([Number(ord.id)]);
               setLineItems([]);
@@ -318,10 +318,14 @@ export default function CheckoutReviewScreen({ route, navigation }) {
         const totalPaid = verifiedData.total_amount_paid ?? orderSummary?.total_payable_amount ?? 0;
         const newBalance = verifiedData.buyer_updated_balance ?? walletInfo?.balance_after_payment ?? 0;
         const finalOrderIds = placeRes.order_ids || (verifiedData.order_id ? [verifiedData.order_id] : (storedOrderIds || []));
+        const finalOrderNumber = verifiedData.order_number || verifiedData.order?.order_number || null;
+        const finalOrderNumbers = verifiedData.order_numbers || (finalOrderNumber ? [finalOrderNumber] : []);
 
         // Navigate to Order Placed Success Screen
         navigation.replace('OrderPlaced', {
           orderIds: finalOrderIds,
+          orderNumber: finalOrderNumber,
+          orderNumbers: finalOrderNumbers,
           totalAmountPaid: totalPaid,
           newWalletBalance: newBalance,
           orders: verifiedData.orders || (verifiedData.order ? [verifiedData.order] : []),

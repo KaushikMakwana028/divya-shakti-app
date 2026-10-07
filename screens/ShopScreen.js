@@ -74,7 +74,15 @@ export default function ShopScreen({ navigation }) {
 
       const res = await productService.getProducts(params);
       if (res.success && Array.isArray(res.data)) {
-        setProducts(res.data);
+        // Available products first, out of stock products last
+        const sorted = [...res.data].sort((a, b) => {
+          const aIn = a.stock !== undefined && a.stock !== null ? Number(a.stock) > 0 : true;
+          const bIn = b.stock !== undefined && b.stock !== null ? Number(b.stock) > 0 : true;
+          if (aIn && !bIn) return -1;
+          if (!aIn && bIn) return 1;
+          return 0;
+        });
+        setProducts(sorted);
       } else {
         setProducts([]);
       }
@@ -161,25 +169,21 @@ export default function ShopScreen({ navigation }) {
       }
     }
 
-    const isProfileComplete =
-      currentUser?.is_profile_completed === true ||
-      Number(currentUser?.profile_completion_percentage) >= 100;
+    const actualPct = Number(currentUser?.profile_completion_percentage ?? 0);
+    const missingList = Array.isArray(currentUser?.missing_fields) ? currentUser.missing_fields : [];
+    const hasMissing = missingList.length > 0;
+    const isProfileComplete = (currentUser?.is_profile_completed === true || actualPct >= 100) && !hasMissing && actualPct >= 100;
 
-    if (
-      currentUser &&
-      !isProfileComplete &&
-      currentUser.profile_completion_percentage !== undefined &&
-      Number(currentUser.profile_completion_percentage) < 100
-    ) {
-      setProfileCompletionPct(Number(currentUser.profile_completion_percentage) || 0);
-      setMissingFields(currentUser.missing_fields || []);
+    if (currentUser && (!isProfileComplete || actualPct < 100 || hasMissing)) {
+      setProfileCompletionPct(actualPct < 100 ? actualPct : (hasMissing ? 99 : actualPct));
+      setMissingFields(missingList);
       setIsProfileUnderReview(false);
       setProfileModalMessage("");
       setProfileModalVisible(true);
       return;
     }
 
-    if (currentUser && isProfileComplete && currentUser.is_profile_active === false) {
+    if (currentUser && isProfileComplete && (currentUser.is_profile_active === false || currentUser.is_profile_active === 0)) {
       setProfileCompletionPct(100);
       setMissingFields([]);
       setIsProfileUnderReview(true);
@@ -204,15 +208,20 @@ export default function ShopScreen({ navigation }) {
           ],
         });
       } else if (res.isUnderReview || res.isProfileIncomplete) {
-        const pct =
+        const apiMissing = res.profileData?.missing_fields || [];
+        const apiHasMissing = apiMissing.length > 0;
+        let pct = Number(
           res.profileData?.profile_completion_percentage ??
           user?.profile_completion_percentage ??
-          (res.isUnderReview ? 100 : 0);
-        setProfileCompletionPct(Number(pct));
-        setMissingFields(res.profileData?.missing_fields || []);
-        setIsProfileUnderReview(
-          Boolean(res.isUnderReview || Number(pct) >= 100),
+          0
         );
+        if (apiHasMissing && pct >= 100) {
+          pct = 99;
+        }
+        const underReview = Boolean(res.isUnderReview) && !apiHasMissing && pct >= 100;
+        setProfileCompletionPct(pct);
+        setMissingFields(apiMissing);
+        setIsProfileUnderReview(underReview);
         setProfileModalMessage(res.message || "");
         setProfileModalVisible(true);
       } else {
@@ -474,35 +483,14 @@ export default function ShopScreen({ navigation }) {
                       )}
                     </View>
 
-                    {/* Add to Cart Button */}
+                    {/* View Details Button */}
                     <TouchableOpacity
-                      style={[
-                        styles.addBtn,
-                        (!inStock || isAdding) && styles.addBtnDisabled,
-                      ]}
+                      style={styles.detailsBtn}
                       activeOpacity={0.8}
-                      disabled={!inStock || isAdding}
-                      onPress={(e) => handleQuickAdd(product, e)}
+                      onPress={() => handleProductPress(product)}
                     >
-                      {isAdding ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : (
-                        <>
-                          <Ionicons
-                            name="bag-add-outline"
-                            size={14}
-                            color={inStock ? "#FFFFFF" : "#B7ABAF"}
-                          />
-                          <Text
-                            style={[
-                              styles.addBtnText,
-                              !inStock && styles.addBtnTextDisabled,
-                            ]}
-                          >
-                            {inStock ? "Add to Cart" : "Unavailable"}
-                          </Text>
-                        </>
-                      )}
+                      <Text style={styles.detailsBtnText}>View Details</Text>
+                      <Ionicons name="arrow-forward" size={13} color="#E64A78" />
                     </TouchableOpacity>
                   </View>
                 </TouchableOpacity>
@@ -843,6 +831,23 @@ const styles = StyleSheet.create({
     color: "#D97706",
     flexShrink: 1,
     textAlign: "right",
+  },
+  detailsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#FFF0F4",
+    borderWidth: 1,
+    borderColor: "#FBD6E2",
+    borderRadius: 12,
+    paddingVertical: 8,
+    width: "100%",
+  },
+  detailsBtnText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 12,
+    color: "#E64A78",
   },
   addBtn: {
     flexDirection: "row",

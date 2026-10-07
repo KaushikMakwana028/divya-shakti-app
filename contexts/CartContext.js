@@ -3,20 +3,24 @@ import cartService from '../services/cartService';
 
 const CartContext = createContext();
 
-const normalizeCartItem = (item) => ({
-  ...item,
-  id: item.product_id || item.id,
-  cart_id: item.cart_id || item.id,
-  product_id: item.product_id || item.id,
-  name: item.product_name || item.name || 'Product',
-  product_name: item.product_name || item.name || 'Product',
-  price: item.price,
-  quantity: Number(item.quantity) || 1,
-  size: item.size || null,
-  image: item.image || item.product_image || null,
-  product_stock: item.product_stock !== undefined ? item.product_stock : (item.stock || 100),
-  total_price: item.total_price !== undefined ? item.total_price : (Number(item.price) * (Number(item.quantity) || 1)),
-});
+const normalizeCartItem = (item) => {
+  const cartId = item.cart_id || item.id;
+  const prodId = item.product_id || item.id;
+  return {
+    ...item,
+    id: cartId,
+    cart_id: cartId,
+    product_id: prodId,
+    name: item.product_name || item.name || 'Product',
+    product_name: item.product_name || item.name || 'Product',
+    price: item.price,
+    quantity: Number(item.quantity) || 1,
+    size: item.size || null,
+    image: item.image || item.product_image || null,
+    product_stock: item.product_stock !== undefined ? item.product_stock : (item.stock || 100),
+    total_price: item.total_price !== undefined ? item.total_price : (Number(item.price) * (Number(item.quantity) || 1)),
+  };
+};
 
 export function CartProvider({ children }) {
   const [cartItems, setCartItems] = useState([]);
@@ -81,13 +85,23 @@ export function CartProvider({ children }) {
   // ─────────────────────────────────────────
   // Update Quantity
   // ─────────────────────────────────────────
-  const updateQuantity = async (productId, quantity) => {
+  const updateQuantity = async (cartIdOrProductId, quantity, size = null, productId = null) => {
     if (quantity <= 0) {
-      return removeFromCart(productId);
+      return removeFromCart(cartIdOrProductId, productId, size);
     }
 
     try {
-      const res = await cartService.updateCartQuantity(productId, quantity);
+      const item = cartItems.find(
+        (ci) =>
+          ci.cart_id === cartIdOrProductId ||
+          ci.id === cartIdOrProductId ||
+          (ci.product_id === cartIdOrProductId && (!size || ci.size === size))
+      );
+      const effectiveCartId = item?.cart_id || (typeof cartIdOrProductId === 'number' ? cartIdOrProductId : null);
+      const effectiveProductId = productId || item?.product_id;
+      const effectiveSize = size || item?.size;
+
+      const res = await cartService.updateCartQuantity(effectiveCartId, quantity, effectiveProductId, effectiveSize);
       if (res.success) {
         await fetchCart();
         return { success: true, message: res.message, data: res.data };
@@ -103,9 +117,19 @@ export function CartProvider({ children }) {
   // ─────────────────────────────────────────
   // Remove Item from Cart
   // ─────────────────────────────────────────
-  const removeFromCart = async (productId) => {
+  const removeFromCart = async (cartIdOrProductId, productId = null, size = null) => {
     try {
-      const res = await cartService.removeFromCart(productId);
+      const item = cartItems.find(
+        (ci) =>
+          ci.cart_id === cartIdOrProductId ||
+          ci.id === cartIdOrProductId ||
+          (ci.product_id === cartIdOrProductId && (!size || ci.size === size))
+      );
+      const effectiveCartId = item?.cart_id || (typeof cartIdOrProductId === 'number' ? cartIdOrProductId : null);
+      const effectiveProductId = productId || item?.product_id;
+      const effectiveSize = size || item?.size;
+
+      const res = await cartService.removeFromCart(effectiveCartId, effectiveProductId, effectiveSize);
       if (res.success) {
         await fetchCart();
         return { success: true, message: res.message };
