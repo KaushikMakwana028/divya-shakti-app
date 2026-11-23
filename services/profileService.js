@@ -160,7 +160,7 @@ class ProfileService {
                 };
             }
 
-            const response = await this.api.delete('/delete-account');
+            const response = await this.api.post('/delete_account', {});
 
             if (response.data && response.data.status) {
                 // Clear any locally cached user/session data

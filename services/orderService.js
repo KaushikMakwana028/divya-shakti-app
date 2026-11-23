@@ -79,6 +79,10 @@ class OrderService {
         return this.placeOrder({ product_id, quantity, size, address_id, preview: 1 });
     }
 
+    async getCheckout(params) {
+        return this.getCheckoutPreview(params);
+    }
+
     // Alias for verifyOrderPayment
     async verifyPayment(orderIds) {
         return this.verifyOrderPayment(orderIds);

@@ -555,57 +555,6 @@ export default function ProductDetailsScreen({ route, navigation }) {
   };
 
   const checkProfileCompleteness = async () => {
-    let currentUser = user;
-    const isLocallyPendingOrInactive =
-      currentUser?.is_profile_active === false ||
-      currentUser?.is_profile_active === 0 ||
-      (currentUser?.profile_completion_percentage !== undefined &&
-        Number(currentUser?.profile_completion_percentage) < 100);
-
-    if (isLocallyPendingOrInactive && refreshProfile) {
-      const fresh = await refreshProfile();
-      if (fresh?.success && fresh?.data) {
-        currentUser = fresh.data;
-      }
-    }
-
-    if (!currentUser) return true;
-    const actualPct = Number(currentUser?.profile_completion_percentage ?? 0);
-    const missingList = Array.isArray(currentUser?.missing_fields)
-      ? currentUser.missing_fields
-      : [];
-    const hasMissing = missingList.length > 0;
-    const isCompleted =
-      (currentUser?.is_profile_completed === true || actualPct >= 100) &&
-      !hasMissing &&
-      actualPct >= 100;
-
-    if (!isCompleted || actualPct < 100 || hasMissing) {
-      setProfileCompletionPct(
-        actualPct < 100 ? actualPct : hasMissing ? 99 : actualPct,
-      );
-      setMissingFields(missingList);
-      setIsProfileUnderReview(false);
-      setProfileModalMessage("");
-      setProfileModalVisible(true);
-      return false;
-    }
-
-    if (
-      isCompleted &&
-      (currentUser.is_profile_active === false ||
-        currentUser.is_profile_active === 0)
-    ) {
-      setProfileCompletionPct(100);
-      setMissingFields([]);
-      setIsProfileUnderReview(true);
-      setProfileModalMessage(
-        "Your profile is 100% complete and submitted for review. Please wait for admin to activate your profile before adding items to cart or purchasing products.",
-      );
-      setProfileModalVisible(true);
-      return false;
-    }
-
     return true;
   };
 
@@ -729,31 +678,11 @@ export default function ProductDetailsScreen({ route, navigation }) {
       }
 
       if (res && !res.success) {
-        if (res.isUnderReview || res.isProfileIncomplete) {
-          const missingList = res.profileData?.missing_fields || [];
-          const hasMissing = missingList.length > 0;
-          let pct = Number(
-            res.profileData?.profile_completion_percentage ??
-              user?.profile_completion_percentage ??
-              0,
-          );
-          if (hasMissing && pct >= 100) {
-            pct = 99;
-          }
-          const underReview =
-            Boolean(res.isUnderReview) && !hasMissing && pct >= 100;
-          setProfileCompletionPct(pct);
-          setMissingFields(missingList);
-          setIsProfileUnderReview(underReview);
-          setProfileModalMessage(res.message || "");
-          setProfileModalVisible(true);
-        } else {
-          showAlert({
-            title: "Cannot Add to Cart",
-            message: res.message || "Failed to add product to cart.",
-            type: "error",
-          });
-        }
+        showAlert({
+          title: "Cannot Add to Cart",
+          message: res.message || "Failed to add product to cart.",
+          type: "error",
+        });
       }
     } finally {
       setAddingToCart(false);

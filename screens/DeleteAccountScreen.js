@@ -7,6 +7,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +26,10 @@ export default function DeleteAccountScreen({ navigation }) {
   const [deleting, setDeleting] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [info, setInfo] = useState(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [deleteInput, setDeleteInput] = useState('');
+
+  const isDeleteConfirmed = deleteInput.trim().toLowerCase() === 'delete';
 
   const fetchInfo = useCallback(async () => {
     try {
@@ -46,11 +54,29 @@ export default function DeleteAccountScreen({ navigation }) {
     fetchInfo();
   };
 
+  const openModal = () => {
+    if (!confirmed) {
+      Alert.alert('Confirmation Required', 'Please check the box to confirm you understand this action is permanent.');
+      return;
+    }
+    setDeleteInput('');
+    setModalVisible(true);
+  };
+
+  const closeModal = () => {
+    if (deleting) return;
+    setModalVisible(false);
+    setDeleteInput('');
+  };
+
   const handlePerformDelete = async () => {
+    if (!isDeleteConfirmed || deleting) return;
     setDeleting(true);
     try {
       const res = await deleteAccount();
       if (res.success) {
+        setModalVisible(false);
+        setDeleteInput('');
         Alert.alert(
           'Account Deleted',
           res.message || 'Your account has been deleted permanently.',
@@ -78,23 +104,7 @@ export default function DeleteAccountScreen({ navigation }) {
   };
 
   const handleDeletePress = () => {
-    if (!confirmed) {
-      Alert.alert('Confirmation Required', 'Please check the box to confirm you understand this action is permanent.');
-      return;
-    }
-
-    Alert.alert(
-      'Permanent Account Deletion',
-      'Are you completely sure? Once confirmed, all your personal data, wallet balance, and network position will be permanently deleted and cannot be recovered.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Yes, Delete Permanently',
-          style: 'destructive',
-          onPress: handlePerformDelete,
-        },
-      ]
-    );
+    openModal();
   };
 
   return (
@@ -275,6 +285,91 @@ export default function DeleteAccountScreen({ navigation }) {
           </TouchableOpacity>
         </ScrollView>
       )}
+
+      {/* ── Type "delete" Confirmation Modal ── */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeModal}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              {/* Alert Icon */}
+              <View style={styles.modalIconBox}>
+                <Ionicons name="trash" size={26} color="#DC2626" />
+              </View>
+
+              {/* Title & Warning */}
+              <Text style={styles.modalTitle}>Confirm Account Deletion</Text>
+              <Text style={styles.modalDesc}>
+                This action is permanent and cannot be undone. All your personal data, wallet balance, and referral position will be permanently lost.
+              </Text>
+
+              {/* Instruction to type delete */}
+              <View style={styles.modalInstructionRow}>
+                <Text style={styles.modalInstructionText}>
+                  Please type <Text style={styles.modalInstructionBold}>delete</Text> below to confirm:
+                </Text>
+              </View>
+
+              {/* Text Input */}
+              <View
+                style={[
+                  styles.modalInputWrapper,
+                  isDeleteConfirmed && styles.modalInputWrapperActive,
+                ]}
+              >
+                <TextInput
+                  style={styles.modalInput}
+                  value={deleteInput}
+                  onChangeText={setDeleteInput}
+                  placeholder="Type 'delete' to confirm"
+                  placeholderTextColor="#A89BA1"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!deleting}
+                />
+                {isDeleteConfirmed && (
+                  <Ionicons name="checkmark-circle" size={18} color="#16A34A" />
+                )}
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.modalActionsRow}>
+                <TouchableOpacity
+                  style={styles.modalCancelBtn}
+                  onPress={closeModal}
+                  disabled={deleting}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.modalConfirmBtn,
+                    (!isDeleteConfirmed || deleting) && styles.modalConfirmBtnDisabled,
+                  ]}
+                  onPress={handlePerformDelete}
+                  disabled={!isDeleteConfirmed || deleting}
+                  activeOpacity={0.8}
+                >
+                  {deleting ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.modalConfirmText}>Delete</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -539,5 +634,137 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#8C7A82',
+  },
+
+  /* ── Delete Confirmation Modal ── */
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBackdrop: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: 'rgba(42, 30, 36, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 22,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  modalTitle: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 17,
+    color: '#2A1E24',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  modalDesc: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 12,
+    color: '#6B5A63',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  modalInstructionRow: {
+    alignSelf: 'stretch',
+    marginBottom: 8,
+  },
+  modalInstructionText: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 12.5,
+    color: '#2A1E24',
+    textAlign: 'left',
+  },
+  modalInstructionBold: {
+    fontFamily: 'Poppins_700Bold',
+    color: '#DC2626',
+    textTransform: 'lowercase',
+  },
+  modalInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 14,
+    paddingVertical: 2,
+    marginBottom: 20,
+  },
+  modalInputWrapperActive: {
+    borderColor: '#16A34A',
+    backgroundColor: '#F0FDF4',
+  },
+  modalInput: {
+    flex: 1,
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 14,
+    color: '#2A1E24',
+    paddingVertical: 10,
+  },
+  modalActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    width: '100%',
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 14,
+    backgroundColor: '#F3EDF0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 13.5,
+    color: '#6B5A63',
+  },
+  modalConfirmBtn: {
+    flex: 1.2,
+    paddingVertical: 13,
+    borderRadius: 14,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#DC2626',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  modalConfirmBtnDisabled: {
+    backgroundColor: '#FCA5A5',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  modalConfirmText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 13.5,
+    color: '#FFFFFF',
   },
 });

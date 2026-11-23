@@ -151,8 +151,8 @@ export default function HomeScreen({ navigation }) {
     (isCompleted
       ? isActive
         ? "Your profile is 100% complete and verified."
-        : "Your profile is 100% complete and submitted for review. Please wait for admin approval."
-      : `Your profile is ${percentage}% complete. Please complete remaining KYC and Bank details to activate shopping and rewards.`);
+        : "Your profile is 100% complete and submitted for review. Please wait for admin approval to enable withdrawals."
+      : `Your profile is ${percentage}% complete. Complete 100% of your profile (Aadhar, PAN, and Bank details) to enable withdrawals.`);
 
   const missingDetails = profileProgress?.missing_fields_details || [];
 
@@ -435,6 +435,72 @@ export default function HomeScreen({ navigation }) {
           </TouchableOpacity>
         )}
 
+        {/* ── Order Products Promotional Banner (Placed Above Account Verification) ── */}
+        <TouchableOpacity
+          style={styles.shopNowBanner}
+          activeOpacity={0.92}
+          onPress={() => navigation.navigate("Shop")}
+        >
+          {/* Subtle Decorative Accents */}
+          <View style={styles.shopNowBannerDecor1} pointerEvents="none" />
+          <View style={styles.shopNowBannerDecor2} pointerEvents="none" />
+
+          {/* Top Tag Pills Row */}
+          <View style={styles.shopNowTopRow}>
+            <View style={styles.shopNowCollectionTag}>
+              <Ionicons name="sparkles" size={11} color="#B48220" />
+              <Text style={styles.shopNowCollectionTagText}>Sacred Collection</Text>
+            </View>
+            <View style={styles.shopNowStatusPill}>
+              <Ionicons name="flash" size={11} color="#E64A78" />
+              <Text style={styles.shopNowStatusPillText}>Instant Ordering</Text>
+            </View>
+          </View>
+
+          {/* Title & Icon Header */}
+          <View style={styles.shopNowHeroRow}>
+            <View style={styles.shopNowIconBox}>
+              <Ionicons name="bag-handle" size={22} color="#E64A78" />
+            </View>
+            <View style={styles.shopNowHeroTextCol}>
+              <Text style={styles.shopNowTitle}>
+                Discover & Order Sacred Products
+              </Text>
+              <Text style={styles.shopNowTagline}>
+                Blessed Spiritual & Wellness Essentials
+              </Text>
+            </View>
+          </View>
+
+          {/* Descriptive Copy */}
+          <Text style={styles.shopNowSubtitle}>
+            Explore our blessed collection of authentic spiritual products. Order directly with fast doorstep delivery across India — open to all members!
+          </Text>
+
+          {/* Micro Feature Highlights */}
+          <View style={styles.shopNowPerksRow}>
+            <View style={styles.shopNowPerkBadge}>
+              <Ionicons name="checkmark-circle" size={12} color="#27A462" />
+              <Text style={styles.shopNowPerkText}>Doorstep Delivery</Text>
+            </View>
+            <View style={styles.shopNowPerkBadge}>
+              <Ionicons name="shield-checkmark" size={12} color="#27A462" />
+              <Text style={styles.shopNowPerkText}>100% Authentic</Text>
+            </View>
+            <View style={styles.shopNowPerkBadge}>
+              <Ionicons name="bag-check" size={12} color="#E64A78" />
+              <Text style={styles.shopNowPerkText}>No KYC to Shop</Text>
+            </View>
+          </View>
+
+          {/* Primary Action Button */}
+          <View style={styles.shopNowBtn}>
+            <Ionicons name="bag-handle-outline" size={16} color="#FFFFFF" />
+            <Text style={styles.shopNowBtnText}>Explore Products & Order</Text>
+            <Ionicons name="arrow-forward" size={15} color="#FFFFFF" />
+          </View>
+        </TouchableOpacity>
+
         {/* ── Profile Progression Card ──
             Only shown while the profile is NOT fully verified & active.
             Once verified, this entire card disappears and is replaced by a
@@ -442,6 +508,7 @@ export default function HomeScreen({ navigation }) {
             no need for a full card just to say "you're verified". */}
         {!isVerifiedAndActive && (
           <View style={styles.progressionCard}>
+            {/* Header: Icon & Full Title */}
             <View style={styles.progressionHeaderRow}>
               <View
                 style={[
@@ -451,20 +518,21 @@ export default function HomeScreen({ navigation }) {
               >
                 <Ionicons
                   name={statusMeta.icon}
-                  size={20}
+                  size={21}
                   color={statusMeta.iconColor}
                 />
               </View>
               <View style={styles.progressionHeaderTextCol}>
-                <Text style={styles.progressionCardTitle} numberOfLines={1}>
+                <Text style={styles.progressionCardTitle}>
                   Account Verification
                 </Text>
                 <Text style={styles.progressionCardSub}>
-                  {completedCount}/{totalFields} Profile Details
+                  {completedCount} of {totalFields} profile details completed
                 </Text>
               </View>
             </View>
 
+            {/* Status Badge */}
             <View
               style={[
                 styles.progressionStatusPill,
@@ -476,7 +544,7 @@ export default function HomeScreen({ navigation }) {
             >
               <Ionicons
                 name={statusMeta.badgeIcon}
-                size={13}
+                size={11}
                 color={statusMeta.pillText}
               />
               <Text
@@ -493,16 +561,23 @@ export default function HomeScreen({ navigation }) {
             <View style={styles.progressBarSection}>
               <View style={styles.progressBarInfoRow}>
                 <Text style={styles.progressPercentLabel}>
-                  Profile Completion
+                  KYC & Withdrawal Eligibility
                 </Text>
-                <Text
+                <View
                   style={[
-                    styles.progressPercentValue,
-                    { color: progressColor },
+                    styles.progressPercentPill,
+                    { backgroundColor: `${progressColor}18` },
                   ]}
                 >
-                  {percentage}%
-                </Text>
+                  <Text
+                    style={[
+                      styles.progressPercentValue,
+                      { color: progressColor },
+                    ]}
+                  >
+                    {percentage}%
+                  </Text>
+                </View>
               </View>
               <View style={styles.progressBarTrack}>
                 <View
@@ -517,27 +592,50 @@ export default function HomeScreen({ navigation }) {
               </View>
             </View>
 
-            {/* Message Banner */}
-            <Text style={styles.progressionMessage}>{progressMessage}</Text>
+            {/* Shopping & Deposit Notice */}
+            <View style={styles.progressionOrderHint}>
+              <Ionicons
+                name="shield-checkmark"
+                size={16}
+                color="#16A34A"
+                style={{ marginTop: 2 }}
+              />
+              <View style={styles.progressionOrderHintCol}>
+                <Text style={styles.progressionOrderHintTitle}>
+                  Shopping & Deposits Are Active
+                </Text>
+                <Text style={styles.progressionOrderHintText}>
+                  You can order products & add deposits right away. Verification is only required for withdrawals.
+                </Text>
+              </View>
+            </View>
 
             {/* Missing Details Pills (if incomplete) */}
             {!isCompleted && missingDetails.length > 0 && (
-              <View style={styles.missingPillsRow}>
-                {missingDetails.slice(0, 3).map((item, idx) => (
-                  <View key={idx} style={styles.missingPill}>
-                    <Ionicons name="ellipse" size={6} color="#B45309" />
-                    <Text style={styles.missingPillText} numberOfLines={1}>
-                      {item.label || item.field}
-                    </Text>
-                  </View>
-                ))}
-                {missingDetails.length > 3 && (
-                  <View style={styles.missingPillMore}>
-                    <Text style={styles.missingPillMoreText}>
-                      +{missingDetails.length - 3} more
-                    </Text>
-                  </View>
-                )}
+              <View style={styles.missingSection}>
+                <View style={styles.missingHeaderRow}>
+                  <Ionicons name="time-outline" size={12} color="#D97706" />
+                  <Text style={styles.missingHeaderLabel}>
+                    Pending for Withdrawal Activation:
+                  </Text>
+                </View>
+                <View style={styles.missingPillsRow}>
+                  {missingDetails.slice(0, 3).map((item, idx) => (
+                    <View key={idx} style={styles.missingPill}>
+                      <Ionicons name="ellipse" size={5} color="#B45309" />
+                      <Text style={styles.missingPillText} numberOfLines={1}>
+                        {item.label || item.field}
+                      </Text>
+                    </View>
+                  ))}
+                  {missingDetails.length > 3 && (
+                    <View style={styles.missingPillMore}>
+                      <Text style={styles.missingPillMoreText}>
+                        +{missingDetails.length - 3} more
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
             )}
 
@@ -551,7 +649,7 @@ export default function HomeScreen({ navigation }) {
                 >
                   <Ionicons name="eye-outline" size={16} color="#D97706" />
                   <Text style={styles.reviewBtnText}>
-                    Review Profile Details
+                    Review Submitted Details
                   </Text>
                   <Ionicons name="chevron-forward" size={14} color="#D97706" />
                 </TouchableOpacity>
@@ -561,10 +659,11 @@ export default function HomeScreen({ navigation }) {
                   activeOpacity={0.85}
                   onPress={() => navigation.navigate("EditProfile")}
                 >
-                  <Text style={styles.completeProfileBtnText}>
+                  <Ionicons name="shield-checkmark" size={16} color="#FFFFFF" />
+                  <Text style={styles.completeProfileBtnText} numberOfLines={1}>
                     Complete Profile ({100 - percentage}% remaining)
                   </Text>
-                  <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+                  <Ionicons name="arrow-forward" size={15} color="#FFFFFF" />
                 </TouchableOpacity>
               )}
             </View>
@@ -1176,30 +1275,184 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
 
+  /* ── Order Products Promotional Banner ── */
+  shopNowBanner: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 18,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: "#FCD5E2",
+    shadowColor: "#E64A78",
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 0.09,
+    shadowRadius: 16,
+    elevation: 4,
+    position: "relative",
+    overflow: "hidden",
+  },
+  shopNowBannerDecor1: {
+    position: "absolute",
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(230, 74, 120, 0.05)",
+    top: -35,
+    right: -25,
+  },
+  shopNowBannerDecor2: {
+    position: "absolute",
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(200, 151, 56, 0.04)",
+    bottom: -20,
+    left: -15,
+  },
+  shopNowTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  shopNowCollectionTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4.5,
+    backgroundColor: "rgba(200,151,56,0.12)",
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(200,151,56,0.25)",
+  },
+  shopNowCollectionTagText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 10.5,
+    color: "#B48220",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  shopNowStatusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#FFF0F4",
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#FCD9E3",
+  },
+  shopNowStatusPillText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 10.5,
+    color: "#E64A78",
+  },
+  shopNowHeroRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  shopNowIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "#FFF0F4",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#FCD5E2",
+    marginRight: 11,
+  },
+  shopNowHeroTextCol: {
+    flex: 1,
+  },
+  shopNowTitle: {
+    fontFamily: "Poppins_700Bold",
+    fontSize: 15.5,
+    color: "#2A1E24",
+    lineHeight: 21,
+  },
+  shopNowTagline: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 11.5,
+    color: "#E64A78",
+    marginTop: 1,
+  },
+  shopNowSubtitle: {
+    fontFamily: "Poppins_400Regular",
+    fontSize: 11.8,
+    color: "#6B5A63",
+    lineHeight: 17.5,
+    marginBottom: 12,
+  },
+  shopNowPerksRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 13,
+  },
+  shopNowPerkBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4.5,
+    backgroundColor: "#FAF7F8",
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#EFE8EB",
+  },
+  shopNowPerkText: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 11,
+    color: "#5C4B54",
+  },
+  shopNowBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    backgroundColor: "#E64A78",
+    paddingVertical: 12,
+    borderRadius: 13,
+    shadowColor: "#E64A78",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.26,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  shopNowBtnText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 13,
+    color: "#FFFFFF",
+  },
+
   /* ── Profile Progression Card (incomplete / pending states only) ── */
   progressionCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 22,
     padding: 18,
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#F0EAED",
+    borderWidth: 1.5,
+    borderColor: "#EFE8EB",
     shadowColor: "#2A1E24",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.06,
-    shadowRadius: 14,
-    elevation: 4,
+    shadowRadius: 16,
+    elevation: 3,
   },
   progressionHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   progressionIconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1209,7 +1462,7 @@ const styles = StyleSheet.create({
   },
   progressionCardTitle: {
     fontFamily: "Poppins_700Bold",
-    fontSize: 15,
+    fontSize: 15.5,
     color: "#2A1E24",
   },
   progressionCardSub: {
@@ -1223,18 +1476,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     alignSelf: "flex-start",
     gap: 5,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4.5,
+    borderRadius: 14,
     borderWidth: 1,
-    marginBottom: 14,
+    marginBottom: 12,
   },
   progressionStatusPillText: {
     fontFamily: "Poppins_600SemiBold",
-    fontSize: 11.5,
+    fontSize: 11,
   },
   progressBarSection: {
-    marginBottom: 10,
+    marginBottom: 12,
   },
   progressBarInfoRow: {
     flexDirection: "row",
@@ -1243,58 +1496,98 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   progressPercentLabel: {
-    fontFamily: "Poppins_500Medium",
-    fontSize: 12,
-    color: "#8C7A82",
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 11.5,
+    color: "#6B5A63",
+  },
+  progressPercentPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
   },
   progressPercentValue: {
     fontFamily: "Poppins_700Bold",
-    fontSize: 13.5,
+    fontSize: 12.5,
   },
   progressBarTrack: {
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: "#EDE6E9",
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#F2EBEE",
     overflow: "hidden",
   },
   progressBarFill: {
     height: "100%",
-    borderRadius: 5,
+    borderRadius: 4,
   },
-  progressionMessage: {
+  progressionOrderHint: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
+    backgroundColor: "#F0FDF4",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#DCFCE7",
+    marginBottom: 12,
+  },
+  progressionOrderHintCol: {
+    flex: 1,
+  },
+  progressionOrderHintTitle: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 11.5,
+    color: "#166534",
+  },
+  progressionOrderHintText: {
     fontFamily: "Poppins_400Regular",
-    fontSize: 12,
-    color: "#6B5A63",
-    lineHeight: 18,
-    marginBottom: 10,
+    fontSize: 11,
+    color: "#15803D",
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  missingSection: {
+    marginBottom: 12,
+  },
+  missingHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginBottom: 6,
+  },
+  missingHeaderLabel: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 10.5,
+    color: "#B45309",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   missingPillsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
-    marginBottom: 12,
   },
   missingPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
     backgroundColor: "#FEF3C7",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 7,
     borderWidth: 1,
     borderColor: "#FDE68A",
   },
   missingPillText: {
     fontFamily: "Poppins_500Medium",
     fontSize: 10.5,
-    color: "#B45309",
+    color: "#92400E",
   },
   missingPillMore: {
     backgroundColor: "#F3EDF0",
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingVertical: 4,
+    borderRadius: 7,
   },
   missingPillMoreText: {
     fontFamily: "Poppins_500Medium",
@@ -1311,7 +1604,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FEF3C7",
     borderWidth: 1,
     borderColor: "#FDE68A",
-    borderRadius: 12,
+    borderRadius: 13,
     paddingHorizontal: 14,
     paddingVertical: 11,
   },
@@ -1326,8 +1619,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     backgroundColor: "#E64A78",
-    borderRadius: 12,
+    borderRadius: 13,
     paddingVertical: 12,
+    paddingHorizontal: 16,
     shadowColor: "#E64A78",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.22,
@@ -1336,8 +1630,9 @@ const styles = StyleSheet.create({
   },
   completeProfileBtnText: {
     fontFamily: "Poppins_600SemiBold",
-    fontSize: 13,
+    fontSize: 12.5,
     color: "#FFFFFF",
+    flexShrink: 1,
   },
 
   /* ── Balance Banner ── */

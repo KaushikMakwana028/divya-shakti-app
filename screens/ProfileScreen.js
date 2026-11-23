@@ -235,8 +235,8 @@ export default function ProfileScreen() {
   };
 
   const handleMenuItemPress = (item) => {
-    if (item.action === 'delete-account') {
-      openDeleteModal();
+    if (item.action === 'delete-account' || item.route === 'DeleteAccount') {
+      navigation.navigate('DeleteAccount');
       return;
     }
     if (item.route) {
@@ -515,7 +515,7 @@ export default function ProfileScreen() {
           <View style={styles.menuCard}>
             <TouchableOpacity
               style={styles.menuItem}
-              onPress={openDeleteModal}
+              onPress={() => navigation.navigate('DeleteAccount')}
               activeOpacity={0.6}
             >
               <View style={[styles.menuIcon, { backgroundColor: '#DC262615' }]}>

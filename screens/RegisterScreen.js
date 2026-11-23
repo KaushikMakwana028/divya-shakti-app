@@ -193,7 +193,7 @@ export default function RegisterScreen({ navigation }) {
                             activeOpacity={0.7}
                         >
                             <Text style={styles.secondaryBtnText}>
-                                Already have an account? Sign In
+                                Already have an account? <Text style={styles.secondaryBtnHighlight}>Sign In</Text>
                             </Text>
                         </TouchableOpacity>
                     </View>
@@ -367,16 +367,28 @@ const styles = StyleSheet.create({
         color: '#9E8E93',
     },
     secondaryBtn: {
-        backgroundColor: '#FAF7F8',
+        backgroundColor: '#FFFFFF',
         borderRadius: 16,
-        paddingVertical: 16,
+        paddingVertical: 14,
+        paddingHorizontal: 16,
         alignItems: 'center',
+        justifyContent: 'center',
         borderWidth: 1.5,
         borderColor: '#F0EAED',
+        shadowColor: '#2A1E24',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.04,
+        shadowRadius: 6,
+        elevation: 1,
     },
     secondaryBtnText: {
-        fontFamily: 'Poppins_600SemiBold',
-        fontSize: 16,
+        fontFamily: 'Poppins_400Regular',
+        fontSize: 14,
+        color: '#6B5A63',
+        textAlign: 'center',
+    },
+    secondaryBtnHighlight: {
+        fontFamily: 'Poppins_700Bold',
         color: '#E64A78',
     },
     footerText: {

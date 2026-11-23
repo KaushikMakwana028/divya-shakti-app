@@ -99,15 +99,6 @@ export default function CheckoutModal({
         } else if (user?.wallet_balance !== undefined) {
           setWalletBalance(Number(user.wallet_balance || 0));
         }
-      } else if (checkoutRes.isProfileIncomplete || checkoutRes.isUnderReview) {
-        const pct =
-          checkoutRes.profileData?.profile_completion_percentage ??
-          (checkoutRes.isUnderReview ? 100 : 0);
-        setProfilePct(Number(pct));
-        setMissingFields(checkoutRes.profileData?.missing_fields || []);
-        setIsProfileUnderReview(Boolean(checkoutRes.isUnderReview || Number(pct) >= 100));
-        setProfileModalMessage(checkoutRes.message || '');
-        setProfileModalVisible(true);
       } else {
         // Fallback to addressService & walletService
         const addrRes = await addressService.getAddresses();
@@ -213,22 +204,11 @@ export default function CheckoutModal({
       const placeRes = await orderService.placeOrder(placePayload);
 
       if (!placeRes.success) {
-        if (placeRes.isUnderReview || placeRes.isProfileIncomplete) {
-          const pct =
-            placeRes.profileData?.profile_completion_percentage ??
-            (placeRes.isUnderReview ? 100 : 0);
-          setProfilePct(Number(pct));
-          setMissingFields(placeRes.profileData?.missing_fields || []);
-          setIsProfileUnderReview(Boolean(placeRes.isUnderReview || Number(pct) >= 100));
-          setProfileModalMessage(placeRes.message || '');
-          setProfileModalVisible(true);
-        } else {
-          showAlert({
-            title: 'Order Placement Failed',
-            message: placeRes.message || 'Could not place your order.',
-            type: 'error',
-          });
-        }
+        showAlert({
+          title: 'Order Placement Failed',
+          message: placeRes.message || 'Could not place your order.',
+          type: 'error',
+        });
         setProcessing(false);
         return;
       }

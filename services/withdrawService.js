@@ -50,10 +50,12 @@ class WithdrawService {
                     formattedMinAmount: data?.formatted_min_amount || `₹${minWithdrawAmount.toFixed(2)}`,
                     bankDetails: data?.bank_details || {},
                     hasBankDetails: hasBankDetails,
-                    canWithdraw: Boolean(hasBankDetails && availableBalance >= minWithdrawAmount),
-                    ineligibilityReason: availableBalance < minWithdrawAmount
-                        ? `Available balance (₹${availableBalance.toFixed(2)}) is lower than minimum limit (₹${minWithdrawAmount.toFixed(2)}).`
-                        : data?.ineligibility_reason || null,
+                    canWithdraw: Boolean(data?.can_withdraw),
+                    ineligibilityReason: data?.ineligibility_reason || null,
+                    isProfileCompleted: Boolean(data?.is_profile_completed),
+                    profileCompletionPercentage: Number(data?.profile_completion_percentage) || 0,
+                    missingFields: data?.missing_fields || [],
+                    isProfileActive: Boolean(data?.is_profile_active),
                     message: response.data.message || 'Withdrawal info retrieved successfully',
                 };
             }
@@ -67,10 +69,13 @@ class WithdrawService {
                 hasBankDetails: false,
                 bankDetails: {},
                 canWithdraw: false,
+                isProfileCompleted: false,
+                profileCompletionPercentage: 0,
+                missingFields: [],
+                isProfileActive: false,
                 message: response.data?.message || 'Failed to fetch withdrawal info',
             };
         } catch (error) {
-            console.error('WithdrawService getWithdrawInfo error:', error.response?.data || error.message);
             return {
                 success: false,
                 balance: 0,
@@ -80,6 +85,10 @@ class WithdrawService {
                 hasBankDetails: false,
                 bankDetails: {},
                 canWithdraw: false,
+                isProfileCompleted: false,
+                profileCompletionPercentage: 0,
+                missingFields: [],
+                isProfileActive: false,
                 message: error.response?.data?.message || error.message || 'Failed to fetch withdrawal info',
             };
         }
@@ -135,7 +144,6 @@ class WithdrawService {
                 errors: response.data?.data || null,
             };
         } catch (error) {
-            console.error('WithdrawService requestWithdraw error:', error.response?.data || error.message);
             return {
                 success: false,
                 message: error.response?.data?.message || error.message || 'Unable to submit withdrawal request.',

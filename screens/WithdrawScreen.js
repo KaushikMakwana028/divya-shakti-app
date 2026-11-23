@@ -36,6 +36,11 @@ export default function WithdrawScreen({ navigation }) {
   const [history, setHistory] = useState([]);
   const [activeTab, setActiveTab] = useState("request"); // 'request' | 'history'
 
+  const [isProfileCompleted, setIsProfileCompleted] = useState(true);
+  const [isProfileActive, setIsProfileActive] = useState(true);
+  const [profileCompletionPercentage, setProfileCompletionPercentage] = useState(100);
+  const [canWithdraw, setCanWithdraw] = useState(true);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -65,6 +70,10 @@ export default function WithdrawScreen({ navigation }) {
         setMinAmount(infoRes.minWithdrawAmount || 500);
         setBankDetails(infoRes.bankDetails || {});
         setHasBankDetails(infoRes.hasBankDetails);
+        setCanWithdraw(infoRes.canWithdraw ?? true);
+        setIsProfileCompleted(infoRes.isProfileCompleted ?? (user?.profile_completion_percentage >= 100));
+        setIsProfileActive(infoRes.isProfileActive ?? (user?.is_profile_active === 1 || user?.is_profile_active === true));
+        setProfileCompletionPercentage(infoRes.profileCompletionPercentage ?? (user?.profile_completion_percentage || 0));
       }
 
       if (histRes.success) {
@@ -106,6 +115,50 @@ export default function WithdrawScreen({ navigation }) {
   // Submit Withdrawal Request
   // ─────────────────────────────────────────
   const handleSubmitWithdrawal = () => {
+    // 1. Error 1: Profile Incomplete (< 100%)
+    const pct = profileCompletionPercentage ?? (user?.profile_completion_percentage || 0);
+    const isCompleted = isProfileCompleted ?? (pct >= 100);
+    const isActive = isProfileActive ?? (user?.is_profile_active === 1 || user?.is_profile_active === true);
+
+    if (!isCompleted || pct < 100) {
+      Alert.alert(
+        "Profile Incomplete",
+        `Your profile is ${pct}% complete. You must complete 100% of your profile (Aadhaar, PAN, and Bank details) before requesting a withdrawal.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Complete Profile", onPress: () => navigation.navigate("EditProfile") },
+        ]
+      );
+      return;
+    }
+
+    // 2. Error 2: Profile Under Review (100% complete, but pending Admin Approval)
+    if (!isActive) {
+      Alert.alert(
+        "Profile Under Review",
+        "Your profile is 100% complete and submitted for review. Withdrawals will be enabled once Admin verifies and approves your account.",
+        [
+          { text: "OK" },
+          { text: "View Profile", onPress: () => navigation.navigate("Profile") },
+        ]
+      );
+      return;
+    }
+
+    // 3. Bank details check
+    if (!hasBankDetails) {
+      Alert.alert(
+        "Bank Details Required",
+        "Please update your bank details in your Profile before submitting a withdrawal request.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Go to Profile", onPress: () => navigation.navigate("EditProfile") },
+        ]
+      );
+      return;
+    }
+
+    // 4. Amount validation
     const amountNum = parseFloat(amount);
 
     if (isNaN(amountNum) || amountNum <= 0) {
@@ -129,19 +182,7 @@ export default function WithdrawScreen({ navigation }) {
       return;
     }
 
-    if (!hasBankDetails) {
-      Alert.alert(
-        "Bank Details Required",
-        "Please update your bank details in your Profile before submitting a withdrawal request.",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Go to Profile", onPress: () => navigation.navigate("EditProfile") },
-        ]
-      );
-      return;
-    }
-
-    // Confirmation Alert
+    // 5. Confirmation Alert (Single popup before submitting)
     const bankName = bankDetails.bank_name || "your bank account";
     const accNo = bankDetails.account_number ? ` (A/C: •••• ${bankDetails.account_number.slice(-4)})` : "";
 
@@ -172,7 +213,6 @@ export default function WithdrawScreen({ navigation }) {
                 Alert.alert("Request Failed", res.message || "Unable to submit withdrawal request.");
               }
             } catch (err) {
-              console.error("Submit withdraw error:", err);
               Alert.alert("Error", "An unexpected error occurred while processing your request.");
             } finally {
               setSubmitting(false);
@@ -325,6 +365,59 @@ export default function WithdrawScreen({ navigation }) {
             ══════════════════════════════════════════ */}
         {activeTab === "request" && (
           <View style={styles.sectionWrap}>
+            {/* Small Compact Profile KYC Status Strip */}
+            {(!isProfileCompleted || profileCompletionPercentage < 100) ? (
+              <TouchableOpacity
+                style={styles.profileCompactStrip}
+                activeOpacity={0.8}
+                onPress={() => navigation.navigate("EditProfile")}
+              >
+                <View style={styles.profileCompactLeft}>
+                  <View style={[styles.profileCompactIconCircle, { backgroundColor: "#FEF3C7" }]}>
+                    <Ionicons name="shield-outline" size={13} color="#D97706" />
+                  </View>
+                  <View style={styles.profileCompactTextRow}>
+                    <Text style={styles.profileCompactTitle}>
+                      Profile {profileCompletionPercentage}% Complete
+                    </Text>
+                    <Text style={styles.profileCompactDot}>•</Text>
+                    <Text style={styles.profileCompactSub} numberOfLines={1}>
+                      100% required for withdrawals
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.profileCompactAction}>
+                  <Text style={styles.profileCompactActionText}>Complete</Text>
+                  <Ionicons name="chevron-forward" size={12} color="#E64A78" />
+                </View>
+              </TouchableOpacity>
+            ) : !isProfileActive ? (
+              <TouchableOpacity
+                style={styles.profileCompactStrip}
+                activeOpacity={0.8}
+                onPress={() => navigation.navigate("Profile")}
+              >
+                <View style={styles.profileCompactLeft}>
+                  <View style={[styles.profileCompactIconCircle, { backgroundColor: "#EFF6FF" }]}>
+                    <Ionicons name="time-outline" size={13} color="#3B82F6" />
+                  </View>
+                  <View style={styles.profileCompactTextRow}>
+                    <Text style={styles.profileCompactTitle}>
+                      Profile Under Review
+                    </Text>
+                    <Text style={styles.profileCompactDot}>•</Text>
+                    <Text style={styles.profileCompactSub} numberOfLines={1}>
+                      Admin verification pending
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.profileCompactAction}>
+                  <Text style={styles.profileCompactActionText}>View</Text>
+                  <Ionicons name="chevron-forward" size={12} color="#E64A78" />
+                </View>
+              </TouchableOpacity>
+            ) : null}
+
             {/* Bank Details Card */}
             <View style={styles.cardBox}>
               <View style={styles.cardBoxHeader}>
@@ -487,11 +580,10 @@ export default function WithdrawScreen({ navigation }) {
               <TouchableOpacity
                 style={[
                   styles.submitBtn,
-                  (!hasBankDetails || isBelowMin || isExceedingBal || parsedAmount <= 0 || submitting) &&
-                    styles.submitBtnDisabled,
+                  submitting && styles.submitBtnDisabled,
                 ]}
                 onPress={handleSubmitWithdrawal}
-                disabled={!hasBankDetails || isBelowMin || isExceedingBal || parsedAmount <= 0 || submitting}
+                disabled={submitting}
                 activeOpacity={0.85}
               >
                 {submitting ? (
@@ -975,6 +1067,70 @@ const styles = StyleSheet.create({
   /* ── Section & Card Boxes ── */
   sectionWrap: {
     gap: 16,
+  },
+  profileCompactStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#F0EAED",
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    shadowColor: "#2A1E24",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  profileCompactLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    minWidth: 0,
+    gap: 8,
+  },
+  profileCompactIconCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileCompactTextRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    minWidth: 0,
+  },
+  profileCompactTitle: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 11.5,
+    color: "#2A1E24",
+  },
+  profileCompactDot: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 11,
+    color: "#C5B8BD",
+    marginHorizontal: 5,
+  },
+  profileCompactSub: {
+    fontFamily: "Poppins_400Regular",
+    fontSize: 11,
+    color: "#8C7A82",
+    flexShrink: 1,
+  },
+  profileCompactAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingLeft: 6,
+  },
+  profileCompactActionText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 11.5,
+    color: "#E64A78",
   },
   cardBox: {
     backgroundColor: "#FFFFFF",

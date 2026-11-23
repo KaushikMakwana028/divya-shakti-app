@@ -73,47 +73,6 @@ export default function CartScreen({ navigation }) {
       return;
     }
 
-    // Live Server Sync if locally inactive or pending approval
-    let currentUser = user;
-    const isLocallyPendingOrInactive =
-      currentUser?.is_profile_active === false ||
-      currentUser?.is_profile_active === 0 ||
-      (currentUser?.profile_completion_percentage !== undefined &&
-        Number(currentUser?.profile_completion_percentage) < 100);
-
-    if (isLocallyPendingOrInactive && refreshProfile) {
-      const fresh = await refreshProfile();
-      if (fresh?.success && fresh?.data) {
-        currentUser = fresh.data;
-      }
-    }
-
-    // Check profile completion (100% required & active required)
-    const actualPct = Number(currentUser?.profile_completion_percentage ?? 0);
-    const missingList = Array.isArray(currentUser?.missing_fields) ? currentUser.missing_fields : [];
-    const hasMissing = missingList.length > 0;
-    const isProfileComplete = (currentUser?.is_profile_completed === true || actualPct >= 100) && !hasMissing && actualPct >= 100;
-
-    if (currentUser && (!isProfileComplete || actualPct < 100 || hasMissing)) {
-      setProfileCompletionPct(actualPct < 100 ? actualPct : (hasMissing ? 99 : actualPct));
-      setMissingFields(missingList);
-      setIsProfileUnderReview(false);
-      setProfileModalMessage('');
-      setProfileModalVisible(true);
-      return;
-    }
-
-    if (currentUser && isProfileComplete && (currentUser.is_profile_active === false || currentUser.is_profile_active === 0)) {
-      setProfileCompletionPct(100);
-      setMissingFields([]);
-      setIsProfileUnderReview(true);
-      setProfileModalMessage(
-        'Your profile is 100% complete and submitted for review. Please wait for admin to activate your profile before adding items to cart or purchasing products.'
-      );
-      setProfileModalVisible(true);
-      return;
-    }
-
     navigation.navigate('CheckoutReview', {
       isBuyNow: false,
     });
@@ -215,27 +174,33 @@ export default function CartScreen({ navigation }) {
           />
         }
       >
-        {/* Profile Warning Banner if < 100% */}
+        {/* Compact Profile KYC Reminder (Small & Good Looking) */}
         {user &&
           user.profile_completion_percentage !== undefined &&
           Number(user.profile_completion_percentage) < 100 && (
             <TouchableOpacity
-              style={styles.profileWarningCard}
-              activeOpacity={0.85}
+              style={styles.profileCompactStrip}
+              activeOpacity={0.8}
               onPress={() => navigation.navigate('Profile')}
             >
-              <View style={styles.warningIconCircle}>
-                <Ionicons name="shield-alert" size={20} color="#DC2626" />
+              <View style={styles.profileCompactLeft}>
+                <View style={styles.profileCompactIconCircle}>
+                  <Ionicons name="shield-checkmark" size={13} color="#C89738" />
+                </View>
+                <View style={styles.profileCompactTextRow}>
+                  <Text style={styles.profileCompactTitle}>
+                    Profile {user.profile_completion_percentage || 0}% Complete
+                  </Text>
+                  <Text style={styles.profileCompactDot}>•</Text>
+                  <Text style={styles.profileCompactSub} numberOfLines={1}>
+                    KYC needed for withdrawals
+                  </Text>
+                </View>
               </View>
-              <View style={styles.warningTextCol}>
-                <Text style={styles.warningTitle}>
-                  Profile {user.profile_completion_percentage || 0}% Complete
-                </Text>
-                <Text style={styles.warningDesc}>
-                  100% profile is required to checkout. Tap to complete.
-                </Text>
+              <View style={styles.profileCompactAction}>
+                <Text style={styles.profileCompactActionText}>Update</Text>
+                <Ionicons name="chevron-forward" size={12} color="#E64A78" />
               </View>
-              <Ionicons name="chevron-forward" size={18} color="#DC2626" />
             </TouchableOpacity>
           )}
 
@@ -396,38 +361,71 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FAF7F8',
   },
-  profileWarningCard: {
+  profileCompactStrip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1.5,
-    borderColor: '#FCA5A5',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 16,
-    gap: 12,
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#F0EAED',
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    marginBottom: 14,
+    shadowColor: '#2A1E24',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  warningIconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#FEE2E2',
+  profileCompactLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    minWidth: 0,
+    gap: 8,
+  },
+  profileCompactIconCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(200, 151, 56, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  warningTextCol: {
+  profileCompactTextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
+    minWidth: 0,
   },
-  warningTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#DC2626',
-    marginBottom: 2,
+  profileCompactTitle: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 11.5,
+    color: '#2A1E24',
   },
-  warningDesc: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: '#991B1B',
+  profileCompactDot: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 11,
+    color: '#C5B8BD',
+    marginHorizontal: 5,
+  },
+  profileCompactSub: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 11,
+    color: '#8C7A82',
+    flexShrink: 1,
+  },
+  profileCompactAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingLeft: 6,
+  },
+  profileCompactActionText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 11.5,
+    color: '#E64A78',
   },
   container: {
     paddingHorizontal: 20,

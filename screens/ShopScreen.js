@@ -154,46 +154,6 @@ export default function ShopScreen({ navigation }) {
       return;
     }
 
-    // Live Server Sync if locally inactive or pending approval
-    let currentUser = user;
-    const isLocallyPendingOrInactive =
-      currentUser?.is_profile_active === false ||
-      currentUser?.is_profile_active === 0 ||
-      (currentUser?.profile_completion_percentage !== undefined &&
-        Number(currentUser?.profile_completion_percentage) < 100);
-
-    if (isLocallyPendingOrInactive && refreshProfile) {
-      const fresh = await refreshProfile();
-      if (fresh?.success && fresh?.data) {
-        currentUser = fresh.data;
-      }
-    }
-
-    const actualPct = Number(currentUser?.profile_completion_percentage ?? 0);
-    const missingList = Array.isArray(currentUser?.missing_fields) ? currentUser.missing_fields : [];
-    const hasMissing = missingList.length > 0;
-    const isProfileComplete = (currentUser?.is_profile_completed === true || actualPct >= 100) && !hasMissing && actualPct >= 100;
-
-    if (currentUser && (!isProfileComplete || actualPct < 100 || hasMissing)) {
-      setProfileCompletionPct(actualPct < 100 ? actualPct : (hasMissing ? 99 : actualPct));
-      setMissingFields(missingList);
-      setIsProfileUnderReview(false);
-      setProfileModalMessage("");
-      setProfileModalVisible(true);
-      return;
-    }
-
-    if (currentUser && isProfileComplete && (currentUser.is_profile_active === false || currentUser.is_profile_active === 0)) {
-      setProfileCompletionPct(100);
-      setMissingFields([]);
-      setIsProfileUnderReview(true);
-      setProfileModalMessage(
-        "Your profile is 100% complete and submitted for review. Please wait for admin to activate your profile before adding items to cart or purchasing products.",
-      );
-      setProfileModalVisible(true);
-      return;
-    }
-
     setAddingProductId(product.id);
     try {
       const res = await addToCart(product, 1);
@@ -207,23 +167,6 @@ export default function ShopScreen({ navigation }) {
             { text: "View Cart", onPress: () => navigation.navigate("Cart") },
           ],
         });
-      } else if (res.isUnderReview || res.isProfileIncomplete) {
-        const apiMissing = res.profileData?.missing_fields || [];
-        const apiHasMissing = apiMissing.length > 0;
-        let pct = Number(
-          res.profileData?.profile_completion_percentage ??
-          user?.profile_completion_percentage ??
-          0
-        );
-        if (apiHasMissing && pct >= 100) {
-          pct = 99;
-        }
-        const underReview = Boolean(res.isUnderReview) && !apiHasMissing && pct >= 100;
-        setProfileCompletionPct(pct);
-        setMissingFields(apiMissing);
-        setIsProfileUnderReview(underReview);
-        setProfileModalMessage(res.message || "");
-        setProfileModalVisible(true);
       } else {
         showAlert({
           title: "Cannot Add to Cart",
